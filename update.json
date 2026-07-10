@@ -1,0 +1,7 @@
+{
+  "version": "1.0.0",
+  "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
+  "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
+  "nvidia_dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp50_mscorwks.dll",
+  "notes": "Initial Myst release."
+}
