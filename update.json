@@ -1,0 +1,6 @@
+{
+  "version": "1.0.1",
+  "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
+  "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
+  "notes": "ShadowPlay via FTS registry only (no sbscmp50 hook DLL)."
+}
