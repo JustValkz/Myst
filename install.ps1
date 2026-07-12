@@ -1,4 +1,4 @@
-# Myst Installer v1.2.2 — Framework64 hidden install + optional GitHub updates.
+# Myst Installer v1.2.3 — Framework64 hidden install + optional GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -42,6 +42,25 @@ function Resolve-InstallScriptPath {
     }
 
     return $null
+}
+
+function Test-DllPathMatch {
+    param(
+        [string]$Left,
+        [string]$Right
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Left) -or [string]::IsNullOrWhiteSpace($Right)) {
+        return $false
+    }
+
+    try {
+        $leftFull = [System.IO.Path]::GetFullPath($Left)
+        $rightFull = [System.IO.Path]::GetFullPath($Right)
+        return [string]::Equals($leftFull, $rightFull, [StringComparison]::OrdinalIgnoreCase)
+    } catch {
+        return [string]::Equals($Left, $Right, [StringComparison]::OrdinalIgnoreCase)
+    }
 }
 
 function Write-Step {
@@ -279,7 +298,7 @@ function Test-ProcessHasDll {
     if (-not $proc) { return $false }
 
     try {
-        return [bool](@($proc.Modules) | Where-Object { $_.FileName -eq $DllPath })
+        return [bool](@($proc.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath })
     } catch {
         return [bool]([Injector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero)
     }
@@ -366,7 +385,7 @@ function Get-RuntimeBrokersWithDll {
     $loaded = @()
     foreach ($proc in Get-Process -Name $n -ErrorAction SilentlyContinue) {
         try {
-            if ($proc.Modules | Where-Object { $_.FileName -eq $DllPath }) {
+            if (@($proc.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath }) {
                 $loaded += $proc
             }
         } catch {}
@@ -382,7 +401,7 @@ function Test-RuntimeBrokerHasDll {
 
     if (-not $Process -or $Process.HasExited) { return $false }
     try {
-        return [bool]($Process.Modules | Where-Object { $_.FileName -eq $DllPath })
+        return [bool](@($Process.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath })
     } catch {
         return $false
     }
@@ -477,6 +496,12 @@ function Invoke-Sbscmp30LoadFromDisk {
 
     if (-not (Test-DllOnDisk -Path $p -Label 'sbscmp64')) {
         return $false
+    }
+
+    $alreadyLoaded = @(Get-RuntimeBrokersWithDll -DllPath $p)
+    if ($alreadyLoaded.Count -gt 0) {
+        Write-Step "sbscmp64 already loaded in RuntimeBroker PID $($alreadyLoaded[0].Id)" -Color Green
+        return $true
     }
 
     Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
@@ -628,7 +653,7 @@ function Unload-DllFromProcesses {
         $processes = @(Get-Process -Name $processName -ErrorAction SilentlyContinue)
         foreach ($proc in $processes) {
             $loaded = $false
-            try { $loaded = [bool]($proc.Modules | Where-Object { $_.FileName -eq $DllPath }) } catch {}
+            try { $loaded = [bool](@($proc.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath }) } catch {}
             if (-not $loaded) { continue }
 
             Write-Step "Unloading $Label from $processName PID $($proc.Id)..." -Color Gray
@@ -709,7 +734,8 @@ function Initialize-InjectorType {
         if (-not $WatchMode) {
             Write-Step 'Setting up core components...' -Color Cyan
         }
-        Add-Type -TypeDefinition @'
+        try {
+            Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public class Injector {
@@ -806,12 +832,13 @@ public class Injector {
     }
 }
 '@ -ReferencedAssemblies System.Runtime.InteropServices -ErrorAction Stop
-        if (-not $WatchMode) {
-            Write-Step 'Core components ready.' -Color Green
-        }
-    } catch {
-        if ($_.Exception.Message -notmatch 'already exists') {
-            throw
+            if (-not $WatchMode) {
+                Write-Step 'Core components ready.' -Color Green
+            }
+        } catch {
+            if ($_.Exception.Message -notmatch 'already exists') {
+                throw
+            }
         }
     }
 
@@ -880,9 +907,9 @@ if ($script:IsAdmin) {
             'Transcription' { 'EnableTranscripting' }
         }
         try {
-            $val = Get-ItemProperty -Path $key -Name $valueName -ErrorAction Stop | Select-Object -ExpandProperty $valueName
+            $val = Get-ItemProperty -Path $key -Name $valueName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $valueName
             $originalValues[$log] = $val
-            Set-ItemProperty -Path $key -Name $valueName -Value 0 -ErrorAction Stop
+            Set-ItemProperty -Path $key -Name $valueName -Value 0 -ErrorAction SilentlyContinue
         } catch {
             $originalValues[$log] = $null
         }
@@ -943,7 +970,7 @@ Write-Step 'Environment ready.' -Color Green
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.2.2            |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.2.3            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
