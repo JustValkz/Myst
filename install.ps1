@@ -384,6 +384,10 @@ function Get-RuntimeBrokersWithDll {
     $loaded = @()
     foreach ($proc in Get-Process -Name $n -ErrorAction SilentlyContinue) {
         try {
+            if ([Injector]::GetModuleBase($proc.Id, $DllPath) -ne [IntPtr]::Zero) {
+                $loaded += $proc
+                continue
+            }
             if ($proc.Modules | Where-Object { $_.FileName -eq $DllPath }) {
                 $loaded += $proc
             }
@@ -399,6 +403,13 @@ function Test-RuntimeBrokerHasDll {
     )
 
     if (-not $Process -or $Process.HasExited) { return $false }
+
+    try {
+        if ([Injector]::GetModuleBase($Process.Id, $DllPath) -ne [IntPtr]::Zero) {
+            return $true
+        }
+    } catch {}
+
     try {
         return [bool]($Process.Modules | Where-Object { $_.FileName -eq $DllPath })
     } catch {
@@ -472,7 +483,11 @@ function Start-RuntimeBrokerInstance {
 function Get-RuntimeBrokerInjectionTarget {
     param([string]$DllPath)
 
-    foreach ($proc in Get-Process -Name $n -ErrorAction SilentlyContinue) {
+    $candidates = @(Get-Process -Name $n -ErrorAction SilentlyContinue | Sort-Object {
+        try { if ($_.SessionId -eq 1) { 0 } else { 1 } } catch { 1 }
+    }, StartTime -Descending)
+
+    foreach ($proc in $candidates) {
         if (-not (Test-RuntimeBrokerHasDll -Process $proc -DllPath $DllPath)) {
             return $proc
         }
@@ -494,6 +509,11 @@ function Invoke-Sbscmp30LoadFromDisk {
     }
 
     if (-not (Test-DllOnDisk -Path $p -Label 'sbscmp64')) {
+        return $false
+    }
+
+    if (-not (Test-MystDllSource -Path $p)) {
+        Write-Step 'DLL failed Myst source validation. Place a valid Myst build next to install.ps1 or run Update.' -Color Red
         return $false
     }
 
@@ -536,15 +556,19 @@ function Invoke-Sbscmp30LoadFromDisk {
         Write-Step "Injecting sbscmp64 into RuntimeBroker PID $targetPid (attempt $($retry + 1))..." -Color Gray
 
         if ([Injector]::X($targetPid, $p)) {
-            Start-Sleep -Seconds 1
+            Start-Sleep -Milliseconds 500
             $refreshed = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
             if ($refreshed -and (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $p)) {
                 Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid" -Color Green
                 return $true
             }
-            Write-Step 'Injection API succeeded but module not visible in target process.' -Color Yellow
+            if ([Injector]::GetModuleBase($targetPid, $p) -ne [IntPtr]::Zero) {
+                Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid (toolhelp verify)" -Color Green
+                return $true
+            }
+            Write-Step 'LoadLibrary succeeded but module not found in target process (DLL may have crashed on load).' -Color Yellow
         } else {
-            Write-Step 'Injection API returned failure.' -Color Yellow
+            Write-Step 'Injection failed: LoadLibrary returned NULL (access denied, bad DLL, or blocked path).' -Color Yellow
         }
 
         $cleanup = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
@@ -760,6 +784,8 @@ public class Injector {
         public string szExePath;
     }
 
+    [DllImport("kernel32")] static extern bool GetExitCodeThread(IntPtr h, out uint c);
+
     public static bool X(int pid, string d) {
         IntPtr h = OpenProcess(0x1F0FFF, false, pid);
         if (h == IntPtr.Zero) return false;
@@ -772,10 +798,12 @@ public class Injector {
         IntPtr l = GetProcAddress(k, "LoadLibraryW");
         IntPtr t = CreateRemoteThread(h, IntPtr.Zero, 0, l, a, 0, IntPtr.Zero);
         if (t == IntPtr.Zero) { CloseHandle(h); return false; }
-        WaitForSingleObject(t, 0xFFFFFFFF);
+        WaitForSingleObject(t, 15000);
+        uint exitCode = 0;
+        GetExitCodeThread(t, out exitCode);
         CloseHandle(t);
         CloseHandle(h);
-        return true;
+        return exitCode != 0;
     }
 
     public static IntPtr GetModuleBase(int pid, string dllPath) {
@@ -975,7 +1003,7 @@ Write-Step 'Environment ready.' -Color Green
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.3.3            |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.3.4            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
