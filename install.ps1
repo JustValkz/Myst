@@ -1,4 +1,4 @@
-# Myst Installer — Framework64 hidden install + optional GitHub updates.
+# Myst Installer v1.2.1 — Framework64 hidden install + optional GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -6,7 +6,7 @@ param(
     [string]$Choice
 )
 
-$ErrorActionPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
 
 $framework64 = "$env:SystemRoot\Microsoft.NET\Framework64"
 $p = "$framework64\sbscmp64_mscorwks.dll"
