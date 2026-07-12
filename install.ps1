@@ -299,7 +299,7 @@ function Test-ProcessHasDll {
     try {
         return [bool](@($proc.Modules) | Where-Object { $_.FileName -eq $DllPath })
     } catch {
-        return [bool]([Injector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero)
+        return [bool]([MystInjector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero)
     }
 }
 
@@ -384,7 +384,7 @@ function Get-RuntimeBrokersWithDll {
     $loaded = @()
     foreach ($proc in Get-Process -Name $n -ErrorAction SilentlyContinue) {
         try {
-            if ([Injector]::GetModuleBase($proc.Id, $DllPath) -ne [IntPtr]::Zero) {
+            if ([MystInjector]::GetModuleBase($proc.Id, $DllPath) -ne [IntPtr]::Zero) {
                 $loaded += $proc
                 continue
             }
@@ -405,7 +405,7 @@ function Test-RuntimeBrokerHasDll {
     if (-not $Process -or $Process.HasExited) { return $false }
 
     try {
-        if ([Injector]::GetModuleBase($Process.Id, $DllPath) -ne [IntPtr]::Zero) {
+        if ([MystInjector]::GetModuleBase($Process.Id, $DllPath) -ne [IntPtr]::Zero) {
             return $true
         }
     } catch {}
@@ -427,7 +427,7 @@ function Remove-RuntimeBrokerDll {
 
     Write-Step "Clearing DLL from RuntimeBroker PID $($Process.Id)..." -Color Gray
 
-    $unloaded = [Injector]::FreeModuleCompletely($Process.Id, $DllPath)
+    $unloaded = [MystInjector]::FreeModuleCompletely($Process.Id, $DllPath)
     if ($unloaded) {
         $refreshed = Get-Process -Id $Process.Id -ErrorAction SilentlyContinue
         if (-not $refreshed -or -not (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $DllPath)) {
@@ -503,7 +503,18 @@ function Restart-ExplorerShell {
     Start-Sleep -Seconds 4
 }
 
+function Reset-RuntimeBrokerPool {
+    Write-Step 'Resetting RuntimeBroker pool...' -Color Gray
+    foreach ($proc in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
+        try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch {}
+    }
+    Start-Sleep -Seconds 2
+    Restart-ExplorerShell
+    Start-Sleep -Seconds 2
+}
+
 function Invoke-Sbscmp30LoadFromDisk {
+    try {
     if (-not (Ensure-Sbscmp30OnDisk)) {
         return $false
     }
@@ -517,6 +528,7 @@ function Invoke-Sbscmp30LoadFromDisk {
         return $false
     }
 
+    Write-Step 'Clearing any existing sbscmp64 loads...' -Color Gray
     Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
 
     foreach ($stubborn in @(Get-RuntimeBrokersWithDll -DllPath $p)) {
@@ -533,9 +545,12 @@ function Invoke-Sbscmp30LoadFromDisk {
     Start-Sleep -Seconds 2
 
     $targetProc = $null
-    $maxInjectRetries = 3
+    $maxInjectRetries = 5
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
+        if ($retry -eq 2) {
+            Reset-RuntimeBrokerPool
+        }
         $targetProc = Get-RuntimeBrokerInjectionTarget -DllPath $p
         if (-not $targetProc) {
             $targetProc = Start-RuntimeBrokerInstance -DllPath $p
@@ -555,14 +570,14 @@ function Invoke-Sbscmp30LoadFromDisk {
         $targetPid = $targetProc.Id
         Write-Step "Injecting sbscmp64 into RuntimeBroker PID $targetPid (attempt $($retry + 1))..." -Color Gray
 
-        if ([Injector]::X($targetPid, $p)) {
+        if ([MystInjector]::X($targetPid, $p)) {
             Start-Sleep -Milliseconds 500
             $refreshed = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
             if ($refreshed -and (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $p)) {
                 Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid" -Color Green
                 return $true
             }
-            if ([Injector]::GetModuleBase($targetPid, $p) -ne [IntPtr]::Zero) {
+            if ([MystInjector]::GetModuleBase($targetPid, $p) -ne [IntPtr]::Zero) {
                 Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid (toolhelp verify)" -Color Green
                 return $true
             }
@@ -581,6 +596,10 @@ function Invoke-Sbscmp30LoadFromDisk {
     Write-Step 'Unable to load sbscmp64 after retries.' -Color Red
     Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
     return $false
+    } catch {
+        Write-Step "Load error: $($_.Exception.Message)" -Color Red
+        return $false
+    }
 }
 
 function Invoke-Sbscmp30Unload {
@@ -630,7 +649,7 @@ function Inject-DllIntoProcesses {
                     continue
                 }
 
-                $result = [Injector]::X($proc.Id, $DllPath)
+                $result = [MystInjector]::X($proc.Id, $DllPath)
                 if ($result) {
                     Start-Sleep -Milliseconds 700
                     if (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath) {
@@ -674,7 +693,7 @@ function Unload-DllFromProcesses {
             if (-not $loaded) { continue }
 
             Write-Step "Unloading $Label from $processName PID $($proc.Id)..." -Color Gray
-            if ([Injector]::FreeModuleCompletely($proc.Id, $DllPath)) {
+            if ([MystInjector]::FreeModuleCompletely($proc.Id, $DllPath)) {
                 Write-Step '  Unloaded.' -Color Green
                 $unloaded++
             } else {
@@ -690,6 +709,11 @@ function Invoke-LoadAllDlls {
     Write-Step 'Ensuring Myst DLL is present...' -Color Cyan
     if (-not (Ensure-Sbscmp30OnDisk)) {
         Write-Host "`n  Myst DLL missing in Framework64. Update/download failed — check GitHub files." -ForegroundColor Yellow
+        return $false
+    }
+
+    if (-not $script:IsAdmin) {
+        Write-Host "`n  Admin required. Right-click PowerShell -> Run as administrator, then run install.ps1 again." -ForegroundColor Red
         return $false
     }
 
@@ -738,13 +762,13 @@ function Invoke-UnloadAllDlls {
     }
 }
 
-$script:InjectorTypeReady = $false
+$script:MystInjectorTypeReady = $false
 
-function Initialize-InjectorType {
-    if ($script:InjectorTypeReady) { return }
+function Initialize-MystInjectorType {
+    if ($script:MystInjectorTypeReady) { return }
 
     $existingType = [System.AppDomain]::CurrentDomain.GetAssemblies().GetTypes() |
-                    Where-Object { $_.FullName -eq 'Injector' }
+                    Where-Object { $_.FullName -eq 'MystInjector' }
     $needNewType = -not $existingType -or -not ($existingType.GetMethod('FreeModuleCompletely'))
 
     if ($needNewType) {
@@ -754,7 +778,7 @@ function Initialize-InjectorType {
         Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public class Injector {
+public class MystInjector {
     [DllImport("kernel32")] static extern IntPtr OpenProcess(uint a, bool b, int c);
     [DllImport("kernel32")] static extern IntPtr VirtualAllocEx(IntPtr h, IntPtr a, uint s, uint t, uint p);
     [DllImport("kernel32")] static extern bool WriteProcessMemory(IntPtr h, IntPtr a, byte[] b, uint s, out uint w);
@@ -798,12 +822,14 @@ public class Injector {
         IntPtr l = GetProcAddress(k, "LoadLibraryW");
         IntPtr t = CreateRemoteThread(h, IntPtr.Zero, 0, l, a, 0, IntPtr.Zero);
         if (t == IntPtr.Zero) { CloseHandle(h); return false; }
-        WaitForSingleObject(t, 15000);
+        uint waitResult = WaitForSingleObject(t, 10000);
         uint exitCode = 0;
-        GetExitCodeThread(t, out exitCode);
+        if (waitResult == 0) {
+            GetExitCodeThread(t, out exitCode);
+        }
         CloseHandle(t);
         CloseHandle(h);
-        return exitCode != 0;
+        return waitResult == 0 && exitCode != 0;
     }
 
     public static IntPtr GetModuleBase(int pid, string dllPath) {
@@ -861,7 +887,7 @@ public class Injector {
         }
     }
 
-    $script:InjectorTypeReady = $true
+    $script:MystInjectorTypeReady = $true
 }
 
 $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -913,12 +939,12 @@ if (-not $script:IsAdmin) {
 }
 
 if ($WatchMode) {
-    Initialize-InjectorType
+    Initialize-MystInjectorType
     Sync-DllExecuterInstall | Out-Null
     exit 0
 }
 
-Initialize-InjectorType
+Initialize-MystInjectorType
 Ensure-InstallerScriptPath -PreferredPath $(if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }) | Out-Null
 Sync-DllExecuterInstall | Out-Null
 
