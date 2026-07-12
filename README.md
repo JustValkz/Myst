@@ -16,10 +16,8 @@ irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex
 ```
 
 1. **First time / update:** pick `3` (Update) — downloads Myst DLL to `C:\Windows\Microsoft.NET\Framework64\`
-2. **Load Myst:** pick `1` (Install & Load) — applies ShadowPlay FTS registry `0x24`
+2. **Load Myst:** pick `1` (Install & Load)
 3. **Unload:** pick `2`
-
-No NVIDIA hook DLL. Capture compatibility is the ShadowPlay registry tweak only.
 
 ## When you release a new build
 
