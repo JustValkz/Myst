@@ -1,4 +1,4 @@
-﻿# Myst Installer — Framework64 hidden install + optional GitHub updates.
+# Myst Installer — Framework64 hidden install + optional GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -899,7 +899,7 @@ Write-Step 'Environment ready.' -Color Green
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.2              |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.3              |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
