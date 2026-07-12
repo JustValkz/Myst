@@ -1,4 +1,4 @@
-# Myst — GitHub upload pack (v1.4.2)
+# Myst — GitHub upload pack (v1.4.3)
 
 Upload **everything in this folder** to `https://github.com/JustValkz/Myst/` (repo root):
 
@@ -71,10 +71,17 @@ Then run the LOC Tier 1 gist in the **same** PowerShell window, or use `Invoke-L
 ### Discord `/update` example
 
 ```
-/update dll_url:https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll version:1.4.2 notes:v1.4.2 - Lua-style wallcheck HBE/triggerbot. Exposure -20..20 + Dark Mode. GitHub offsets to hidden CachedFiles. announce:True
+/update dll_url:https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll version:1.4.3 notes:v1.4.3 - Fix chams+wallcheck cursor lag when menu open. Throttled wallcheck, outline chams while UI open. announce:True
 ```
 
 ---
+
+## v1.4.3 changes
+
+- Fix chams + wallcheck cursor lag when menu is open
+- Wallcheck refresh minimum 50ms (was 0ms in unlimited mode = every frame)
+- Menu open: 150ms wallcheck cache, 2 entity checks/frame, lighter obstacle scan
+- Menu open: chams use fast outline path instead of heavy pixel raster fill
 
 ## v1.4.2 changes
 

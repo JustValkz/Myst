@@ -1,9 +1,9 @@
 {
-  "version": "1.4.2",
+  "version": "1.4.3",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
   "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
-  "notes": "v1.4.2 - Lua-style wallcheck for HBE wires/triggerbot (2,2,1 behind walls, expanded when visible). Triggerbot LOS from head. Exposure -20 to 20 + Dark Mode. Offsets download from GitHub to hidden CachedFiles path."
+  "notes": "v1.4.3 - Fix chams+wallcheck cursor lag when menu open. Throttled wallcheck refresh, per-frame budget, outline-only chams while UI open."
 }
