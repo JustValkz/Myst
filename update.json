@@ -1,9 +1,9 @@
 {
-  "version": "1.4.9",
+  "version": "1.5.0",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
   "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
-  "notes": "v1.4.9 - Stricter HRP-only wallcheck (fail-closed, no grace/peek samples). Wallbang strips CanCollide+CanQuery and redirects bullets via raycast (no HBE). Exposure -100 to 100, fog start/end sliders cap at 150, brightness cap 100. Dark Mode + Fullbright presets. ESP preview classic noob with chams. Chams lighter when menu open."
+  "notes": "v1.5.0 - Name Tag ESP with boxed labels (like Status ESP). ESP preview uses Tung Tung Sahur avatar with chams and name tag. Colorbot is now its own Combat tab with team/wall/dead checks. Tracers quick toggle in Visuals. Version shown next to MYST in header."
 }
