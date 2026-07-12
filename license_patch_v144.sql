@@ -1,6 +1,12 @@
 -- Myst license patch v1.4.4 (run in Supabase SQL Editor on existing DB)
 -- Fixes: no auto-blacklist on HWID mismatch, roblox_user tracking, admin unblacklist helpers.
 
+-- Drop legacy claim_license overloads (PostgREST cannot choose between them).
+drop function if exists public.claim_license(text, text);
+drop function if exists public.claim_license(text, text, text);
+drop function if exists public.claim_license(text, text, text, text);
+drop function if exists public.claim_license(text, text, text, text, text);
+
 alter table public.license_keys
     add column if not exists roblox_user text,
     add column if not exists generated_by text;
