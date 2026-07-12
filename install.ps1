@@ -3,7 +3,8 @@
 
 param(
     [switch]$WatchMode,
-    [string]$Choice
+    [string]$Choice,
+    [switch]$ForceGitHub
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -306,6 +307,14 @@ function Test-ProcessHasDll {
 function Ensure-Sbscmp30OnDisk {
     param([switch]$ForceRefresh)
 
+    if ($ForceGitHub) {
+        Write-Step 'ForceGitHub: downloading Myst DLL from GitHub update manifest...' -Color Yellow
+        if (Invoke-MystUpdate) {
+            return (Test-Path -LiteralPath $p) -and (Prepare-DllFile -Path $p)
+        }
+        return $false
+    }
+
     if (Test-Path -LiteralPath $p) {
         if (Prepare-DllFile -Path $p) {
             $source = Resolve-LocalBuildDll -Names @('Myst.dll', 'sbscmp64_mscorwks.dll')
@@ -571,7 +580,7 @@ function Invoke-Sbscmp30LoadFromDisk {
         Write-Step "Injecting sbscmp64 into RuntimeBroker PID $targetPid (attempt $($retry + 1))..." -Color Gray
 
         if ([MystInjector]::X($targetPid, $p)) {
-            Start-Sleep -Milliseconds 500
+            Start-Sleep -Milliseconds 1500
             $refreshed = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
             if ($refreshed -and (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $p)) {
                 Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid" -Color Green
@@ -581,9 +590,14 @@ function Invoke-Sbscmp30LoadFromDisk {
                 Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid (toolhelp verify)" -Color Green
                 return $true
             }
-            Write-Step 'LoadLibrary succeeded but module not found in target process (DLL may have crashed on load).' -Color Yellow
+            Write-Step 'LoadLibrary succeeded but module not found (DLL may have crashed during DllMain).' -Color Yellow
         } else {
-            Write-Step 'Injection failed: LoadLibrary returned NULL (access denied, bad DLL, or blocked path).' -Color Yellow
+            $exitCode = [MystInjector]::GetLastLoadExitCode()
+            if ($exitCode -ne 0) {
+                Write-Step "Injection failed: LoadLibrary exit code 0x$($exitCode.ToString('X'))" -Color Yellow
+            } else {
+                Write-Step 'Injection failed: LoadLibrary returned NULL (access denied, missing dependency, or blocked path).' -Color Yellow
+            }
         }
 
         $cleanup = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
@@ -706,14 +720,14 @@ function Unload-DllFromProcesses {
 }
 
 function Invoke-LoadAllDlls {
-    Write-Step 'Ensuring Myst DLL is present...' -Color Cyan
-    if (-not (Ensure-Sbscmp30OnDisk)) {
-        Write-Host "`n  Myst DLL missing in Framework64. Update/download failed — check GitHub files." -ForegroundColor Yellow
+    if (-not $script:IsAdmin) {
+        Write-Host "`n  Admin required. Right-click PowerShell -> Run as administrator, then run install.ps1 again." -ForegroundColor Red
         return $false
     }
 
-    if (-not $script:IsAdmin) {
-        Write-Host "`n  Admin required. Right-click PowerShell -> Run as administrator, then run install.ps1 again." -ForegroundColor Red
+    Write-Step 'Ensuring Myst DLL is present...' -Color Cyan
+    if (-not (Ensure-Sbscmp30OnDisk -ForceRefresh:([bool]$ForceGitHub))) {
+        Write-Host "`n  Myst DLL missing in Framework64. Run option 3 (Update) or use -ForceGitHub." -ForegroundColor Yellow
         return $false
     }
 
@@ -727,7 +741,22 @@ function Invoke-LoadAllDlls {
         return $true
     }
 
+    if (-not $ForceGitHub) {
+        Write-Step 'Load failed. Retrying with GitHub download...' -Color Yellow
+        $script:ForceGitHub = $true
+        if (Ensure-Sbscmp30OnDisk -ForceRefresh:$true -ForceGitHub) {
+            if (Invoke-Sbscmp30LoadFromDisk) {
+                Write-Host "`n  sbscmp64 Loaded (GitHub build)" -ForegroundColor Green
+                Write-Host "`n  Loaded — press Insert in-game to open the Myst menu." -ForegroundColor Green
+                Test-MystOverlayStarted | Out-Null
+                return $true
+            }
+        }
+    }
+
     Write-Host "`n  Unable to Load sbscmp64" -ForegroundColor Red
+    Write-Host "  Try: close all Roblox windows, run option 2 (unload), then option 1 again." -ForegroundColor Yellow
+    Write-Host "  Or run as admin: irm $defaultScriptUrl | iex  then choose 3 (Update) then 1 (Load)." -ForegroundColor Yellow
     return $false
 }
 
@@ -811,6 +840,7 @@ public class MystInjector {
     [DllImport("kernel32")] static extern bool GetExitCodeThread(IntPtr h, out uint c);
 
     public static bool X(int pid, string d) {
+        _lastLoadExitCode = 0;
         IntPtr h = OpenProcess(0x1F0FFF, false, pid);
         if (h == IntPtr.Zero) return false;
         IntPtr a = VirtualAllocEx(h, IntPtr.Zero, (uint)((d.Length + 1) * 2), 0x3000, 0x4);
@@ -822,15 +852,19 @@ public class MystInjector {
         IntPtr l = GetProcAddress(k, "LoadLibraryW");
         IntPtr t = CreateRemoteThread(h, IntPtr.Zero, 0, l, a, 0, IntPtr.Zero);
         if (t == IntPtr.Zero) { CloseHandle(h); return false; }
-        uint waitResult = WaitForSingleObject(t, 10000);
+        uint waitResult = WaitForSingleObject(t, 15000);
         uint exitCode = 0;
         if (waitResult == 0) {
             GetExitCodeThread(t, out exitCode);
         }
+        _lastLoadExitCode = exitCode;
         CloseHandle(t);
         CloseHandle(h);
         return waitResult == 0 && exitCode != 0;
     }
+
+    static uint _lastLoadExitCode = 0;
+    public static uint GetLastLoadExitCode() { return _lastLoadExitCode; }
 
     public static IntPtr GetModuleBase(int pid, string dllPath) {
         IntPtr hSnapshot = CreateToolhelp32Snapshot(0x8, (uint)pid);

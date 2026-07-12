@@ -1,9 +1,9 @@
 {
-  "version": "1.4.6",
+  "version": "1.4.7",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
   "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
-  "notes": "v1.4.6 rollback - restores smooth ESP/UI/cursor performance. Nested character rig ESP fix included."
+  "notes": "v1.4.7 - Advanced wallcheck, HBE wireframe fix, Colorbot. Instant ESP performance."
 }
