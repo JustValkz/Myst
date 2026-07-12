@@ -1,8 +1,9 @@
-# Myst Installer v1.2.3 — Framework64 hidden install + optional GitHub updates.
+# Myst Installer v1.2.4 — Framework64 hidden install + optional GitHub updates.
 #Requires -Version 5.1
 
 param(
     [switch]$WatchMode,
+    [switch]$LoadOnly,
     [string]$Choice
 )
 
@@ -233,7 +234,7 @@ function Copy-LocalBuildDll {
         New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
     }
 
-    Copy-Item -LiteralPath $source -Destination $Destination -Force
+    Copy-Item -LiteralPath $source -Destination $Destination -Force | Out-Null
     Write-Step "Copied local build '$([System.IO.Path]::GetFileName($source))' -> $Destination" -Color Green
     return (Prepare-DllFile -Path $Destination)
 }
@@ -308,7 +309,8 @@ function Ensure-Sbscmp30OnDisk {
     param([switch]$ForceRefresh)
 
     if (Test-Path -LiteralPath $p) {
-        if (Prepare-DllFile -Path $p) {
+        $prepared = Prepare-DllFile -Path $p
+        if ($prepared) {
             $source = Resolve-LocalBuildDll -Names @('Myst.dll', 'sbscmp64_mscorwks.dll')
             if ($source) {
                 $sourceInfo = Get-Item -LiteralPath $source
@@ -318,28 +320,37 @@ function Ensure-Sbscmp30OnDisk {
                     if (Test-FileLocked -Path $p) {
                         Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
                     }
-                    if (Copy-LocalBuildDll -Destination $p -Names @('Myst.dll', 'sbscmp64_mscorwks.dll')) {
+                    $copied = Copy-LocalBuildDll -Destination $p -Names @('Myst.dll', 'sbscmp64_mscorwks.dll')
+                    if ($copied) {
                         return $true
                     }
+                    Write-Step 'Local Myst.dll copy failed validation. Keeping installed Framework64 DLL.' -Color Yellow
                 }
             }
 
             return $true
         }
+
+        Write-Step 'Framework64 DLL exists but could not be prepared.' -Color Red
+        return $false
     }
 
     if (Test-FileLocked -Path $p) {
         Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
     }
 
-    if (Copy-LocalBuildDll -Destination $p -Names @('Myst.dll', 'sbscmp64_mscorwks.dll')) {
+    $copied = Copy-LocalBuildDll -Destination $p -Names @('Myst.dll', 'sbscmp64_mscorwks.dll')
+    if ($copied) {
         return $true
     }
 
     Write-Step 'Local Myst DLL not found. Downloading from GitHub update manifest...' -Color Gray
     if (Invoke-MystUpdate) {
-        if ((Test-Path -LiteralPath $p) -and (Prepare-DllFile -Path $p)) {
-            return $true
+        if ((Test-Path -LiteralPath $p)) {
+            $prepared = Prepare-DllFile -Path $p
+            if ($prepared) {
+                return $true
+            }
         }
     }
 
@@ -490,11 +501,15 @@ function Restart-ExplorerShell {
 }
 
 function Invoke-Sbscmp30LoadFromDisk {
+    Write-Step 'Starting RuntimeBroker load...' -Color Cyan
+
     if (-not (Ensure-Sbscmp30OnDisk)) {
+        Write-Step 'Ensure-Sbscmp30OnDisk failed.' -Color Red
         return $false
     }
 
     if (-not (Test-DllOnDisk -Path $p -Label 'sbscmp64')) {
+        Write-Step 'Test-DllOnDisk failed.' -Color Red
         return $false
     }
 
@@ -543,12 +558,19 @@ function Invoke-Sbscmp30LoadFromDisk {
         Write-Step "Injecting sbscmp64 into RuntimeBroker PID $targetPid (attempt $($retry + 1))..." -Color Gray
 
         if ([Injector]::X($targetPid, $p)) {
-            Start-Sleep -Seconds 1
+            Start-Sleep -Seconds 2
             $refreshed = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
             if ($refreshed -and (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $p)) {
                 Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid" -Color Green
                 return $true
             }
+
+            $moduleBase = [Injector]::GetModuleBase($targetPid, $p)
+            if ($moduleBase -ne [IntPtr]::Zero) {
+                Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid (toolhelp confirmed)" -Color Green
+                return $true
+            }
+
             Write-Step 'Injection API succeeded but module not visible in target process.' -Color Yellow
         } else {
             Write-Step 'Injection API returned failure.' -Color Yellow
@@ -672,21 +694,24 @@ function Unload-DllFromProcesses {
 function Invoke-LoadAllDlls {
     Write-Step 'Ensuring Myst DLL is present...' -Color Cyan
     if (-not (Ensure-Sbscmp30OnDisk)) {
-        Write-Host "`n  Myst DLL missing in Framework64. Update/download failed — check GitHub files." -ForegroundColor Yellow
+        Write-Host ''
+        Write-Host '  Myst DLL missing in Framework64. Update/download failed - check GitHub files.' -ForegroundColor Yellow
         return $false
     }
 
     Write-Host ''
-    Write-Host '  === RuntimeBroker (sbscmp64) ===' -ForegroundColor Cyan
+    Write-Step 'RuntimeBroker load (sbscmp64)...' -Color Cyan
 
     if (Invoke-Sbscmp30LoadFromDisk) {
-        Write-Host "`n  sbscmp64 Loaded" -ForegroundColor Green
-        Write-Host "`n  Loaded — press Insert in-game to open the Myst menu." -ForegroundColor Green
+        Write-Host ''
+        Write-Host '  sbscmp64 Loaded' -ForegroundColor Green
+        Write-Host '  Loaded - press Insert in-game to open the Myst menu.' -ForegroundColor Green
         Test-MystOverlayStarted | Out-Null
         return $true
     }
 
-    Write-Host "`n  Unable to Load sbscmp64" -ForegroundColor Red
+    Write-Host ''
+    Write-Host '  Unable to Load sbscmp64' -ForegroundColor Red
     return $false
 }
 
@@ -889,6 +914,16 @@ if ($WatchMode) {
 Initialize-InjectorType
 Sync-DllExecuterInstall | Out-Null
 
+if ($LoadOnly) {
+    Write-Host '  Myst direct load mode' -ForegroundColor Cyan
+    if (Invoke-LoadAllDlls) {
+        Write-Host '  DLL loaded successfully.' -ForegroundColor Green
+        exit 0
+    }
+    Write-Host '  DLL load failed.' -ForegroundColor Red
+    exit 1
+}
+
 Write-Step 'Preparing environment...' -Color Cyan
 
 $loggingPaths = @{
@@ -970,7 +1005,7 @@ Write-Step 'Environment ready.' -Color Green
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.2.3            |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.2.4            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
@@ -999,7 +1034,12 @@ $loadSucceeded = $false
 try {
 switch ($choice) {
     '1' {
-        $loadSucceeded = [bool](Invoke-LoadAllDlls)
+        $loadSucceeded = Invoke-LoadAllDlls
+        if ($loadSucceeded -is [System.Array]) {
+            $loadSucceeded = [bool]($loadSucceeded[-1])
+        } else {
+            $loadSucceeded = [bool]$loadSucceeded
+        }
     }
 
     '2' {
