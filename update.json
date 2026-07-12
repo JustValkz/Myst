@@ -1,9 +1,6 @@
 {
-  "version": "1.4.7",
+  "version": "1.2",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
-  "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
-  "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
-  "notes": "v1.4.7 - Advanced wallcheck, HBE wireframe fix, Colorbot. Instant ESP performance."
+  "notes": "v1.2 - low-end PC mode, global disable team checks, theo offsets."
 }

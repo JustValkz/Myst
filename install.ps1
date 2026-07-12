@@ -3,26 +3,20 @@
 
 param(
     [switch]$WatchMode,
-    [string]$Choice,
-    [switch]$ForceGitHub
+    [ValidateSet('1', '2', '3', '4')]
+    [string]$Choice
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
-try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-} catch {}
-
-$script:InvokedRemotely = [string]::IsNullOrWhiteSpace($PSCommandPath) -and [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)
 
 $framework64 = "$env:SystemRoot\Microsoft.NET\Framework64"
 $p = "$framework64\sbscmp64_mscorwks.dll"
 $defaultScriptUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1'
 $defaultUpdateManifestUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json'
-$script:HiddenConfigDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Themes\CachedFiles'
-$script:UpdateManifestPath = Join-Path $script:HiddenConfigDir 'update.json'
+$script:UpdateManifestPath = Join-Path $env:ProgramData 'Myst\update.json'
 $n = 'RuntimeBroker'
 $x = "$env:SystemRoot\System32\$n.exe"
-$script:DllExecuterInstallPath = Join-Path $script:HiddenConfigDir 'install.ps1'
+$script:DllExecuterInstallPath = Join-Path $env:ProgramData 'Myst\install.ps1'
 
 function Write-Step {
     param([string]$Message, [string]$Color = 'Cyan')
@@ -225,45 +219,6 @@ function Sync-DllExecuterInstall {
     return $null
 }
 
-function Ensure-InstallerScriptPath {
-    param([string]$PreferredPath)
-
-    if (-not [string]::IsNullOrWhiteSpace($PreferredPath) -and (Test-Path -LiteralPath $PreferredPath)) {
-        return (Resolve-Path -LiteralPath $PreferredPath).Path
-    }
-
-    $cached = $script:DllExecuterInstallPath
-    $dir = Split-Path $cached -Parent
-    if (-not (Test-Path -LiteralPath $dir)) {
-        New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    }
-
-    foreach ($candidate in @(
-            $PSCommandPath
-            $MyInvocation.MyCommand.Path
-            $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'install.ps1' })
-            $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'myst.ps1' })
-        )) {
-        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-        if (Test-Path -LiteralPath $candidate) {
-            Copy-Item -LiteralPath $candidate -Destination $cached -Force
-            return $cached
-        }
-    }
-
-    try {
-        Write-Step 'Downloading installer for elevation...' -Color Gray
-        Invoke-WebRequest -Uri $defaultScriptUrl -OutFile $cached -UseBasicParsing
-        if (Test-Path -LiteralPath $cached) {
-            return $cached
-        }
-    } catch {
-        Write-Step "Could not cache installer: $($_.Exception.Message)" -Color Red
-    }
-
-    return $null
-}
-
 function Test-FileLocked {
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
@@ -300,20 +255,12 @@ function Test-ProcessHasDll {
     try {
         return [bool](@($proc.Modules) | Where-Object { $_.FileName -eq $DllPath })
     } catch {
-        return [bool]([MystInjector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero)
+        return [bool]([Injector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero)
     }
 }
 
 function Ensure-Sbscmp30OnDisk {
     param([switch]$ForceRefresh)
-
-    if ($ForceGitHub) {
-        Write-Step 'ForceGitHub: downloading Myst DLL from GitHub update manifest...' -Color Yellow
-        if (Invoke-MystUpdate) {
-            return (Test-Path -LiteralPath $p) -and (Prepare-DllFile -Path $p)
-        }
-        return $false
-    }
 
     if (Test-Path -LiteralPath $p) {
         if (Prepare-DllFile -Path $p) {
@@ -393,10 +340,6 @@ function Get-RuntimeBrokersWithDll {
     $loaded = @()
     foreach ($proc in Get-Process -Name $n -ErrorAction SilentlyContinue) {
         try {
-            if ([MystInjector]::GetModuleBase($proc.Id, $DllPath) -ne [IntPtr]::Zero) {
-                $loaded += $proc
-                continue
-            }
             if ($proc.Modules | Where-Object { $_.FileName -eq $DllPath }) {
                 $loaded += $proc
             }
@@ -412,13 +355,6 @@ function Test-RuntimeBrokerHasDll {
     )
 
     if (-not $Process -or $Process.HasExited) { return $false }
-
-    try {
-        if ([MystInjector]::GetModuleBase($Process.Id, $DllPath) -ne [IntPtr]::Zero) {
-            return $true
-        }
-    } catch {}
-
     try {
         return [bool]($Process.Modules | Where-Object { $_.FileName -eq $DllPath })
     } catch {
@@ -436,7 +372,7 @@ function Remove-RuntimeBrokerDll {
 
     Write-Step "Clearing DLL from RuntimeBroker PID $($Process.Id)..." -Color Gray
 
-    $unloaded = [MystInjector]::FreeModuleCompletely($Process.Id, $DllPath)
+    $unloaded = [Injector]::FreeModuleCompletely($Process.Id, $DllPath)
     if ($unloaded) {
         $refreshed = Get-Process -Id $Process.Id -ErrorAction SilentlyContinue
         if (-not $refreshed -or -not (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $DllPath)) {
@@ -492,11 +428,7 @@ function Start-RuntimeBrokerInstance {
 function Get-RuntimeBrokerInjectionTarget {
     param([string]$DllPath)
 
-    $candidates = @(Get-Process -Name $n -ErrorAction SilentlyContinue | Sort-Object {
-        try { if ($_.SessionId -eq 1) { 0 } else { 1 } } catch { 1 }
-    }, StartTime -Descending)
-
-    foreach ($proc in $candidates) {
+    foreach ($proc in Get-Process -Name $n -ErrorAction SilentlyContinue) {
         if (-not (Test-RuntimeBrokerHasDll -Process $proc -DllPath $DllPath)) {
             return $proc
         }
@@ -512,18 +444,7 @@ function Restart-ExplorerShell {
     Start-Sleep -Seconds 4
 }
 
-function Reset-RuntimeBrokerPool {
-    Write-Step 'Resetting RuntimeBroker pool...' -Color Gray
-    foreach ($proc in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
-        try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch {}
-    }
-    Start-Sleep -Seconds 2
-    Restart-ExplorerShell
-    Start-Sleep -Seconds 2
-}
-
 function Invoke-Sbscmp30LoadFromDisk {
-    try {
     if (-not (Ensure-Sbscmp30OnDisk)) {
         return $false
     }
@@ -532,12 +453,6 @@ function Invoke-Sbscmp30LoadFromDisk {
         return $false
     }
 
-    if (-not (Test-MystDllSource -Path $p)) {
-        Write-Step 'DLL failed Myst source validation. Place a valid Myst build next to install.ps1 or run Update.' -Color Red
-        return $false
-    }
-
-    Write-Step 'Clearing any existing sbscmp64 loads...' -Color Gray
     Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
 
     foreach ($stubborn in @(Get-RuntimeBrokersWithDll -DllPath $p)) {
@@ -554,12 +469,9 @@ function Invoke-Sbscmp30LoadFromDisk {
     Start-Sleep -Seconds 2
 
     $targetProc = $null
-    $maxInjectRetries = 5
+    $maxInjectRetries = 3
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
-        if ($retry -eq 2) {
-            Reset-RuntimeBrokerPool
-        }
         $targetProc = Get-RuntimeBrokerInjectionTarget -DllPath $p
         if (-not $targetProc) {
             $targetProc = Start-RuntimeBrokerInstance -DllPath $p
@@ -579,25 +491,16 @@ function Invoke-Sbscmp30LoadFromDisk {
         $targetPid = $targetProc.Id
         Write-Step "Injecting sbscmp64 into RuntimeBroker PID $targetPid (attempt $($retry + 1))..." -Color Gray
 
-        if ([MystInjector]::X($targetPid, $p)) {
-            Start-Sleep -Milliseconds 1500
+        if ([Injector]::X($targetPid, $p)) {
+            Start-Sleep -Seconds 1
             $refreshed = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
             if ($refreshed -and (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $p)) {
                 Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid" -Color Green
                 return $true
             }
-            if ([MystInjector]::GetModuleBase($targetPid, $p) -ne [IntPtr]::Zero) {
-                Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid (toolhelp verify)" -Color Green
-                return $true
-            }
-            Write-Step 'LoadLibrary succeeded but module not found (DLL may have crashed during DllMain).' -Color Yellow
+            Write-Step 'Injection API succeeded but module not visible in target process.' -Color Yellow
         } else {
-            $exitCode = [MystInjector]::GetLastLoadExitCode()
-            if ($exitCode -ne 0) {
-                Write-Step "Injection failed: LoadLibrary exit code 0x$($exitCode.ToString('X'))" -Color Yellow
-            } else {
-                Write-Step 'Injection failed: LoadLibrary returned NULL (access denied, missing dependency, or blocked path).' -Color Yellow
-            }
+            Write-Step 'Injection API returned failure.' -Color Yellow
         }
 
         $cleanup = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
@@ -610,10 +513,6 @@ function Invoke-Sbscmp30LoadFromDisk {
     Write-Step 'Unable to load sbscmp64 after retries.' -Color Red
     Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
     return $false
-    } catch {
-        Write-Step "Load error: $($_.Exception.Message)" -Color Red
-        return $false
-    }
 }
 
 function Invoke-Sbscmp30Unload {
@@ -663,7 +562,7 @@ function Inject-DllIntoProcesses {
                     continue
                 }
 
-                $result = [MystInjector]::X($proc.Id, $DllPath)
+                $result = [Injector]::X($proc.Id, $DllPath)
                 if ($result) {
                     Start-Sleep -Milliseconds 700
                     if (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath) {
@@ -707,7 +606,7 @@ function Unload-DllFromProcesses {
             if (-not $loaded) { continue }
 
             Write-Step "Unloading $Label from $processName PID $($proc.Id)..." -Color Gray
-            if ([MystInjector]::FreeModuleCompletely($proc.Id, $DllPath)) {
+            if ([Injector]::FreeModuleCompletely($proc.Id, $DllPath)) {
                 Write-Step '  Unloaded.' -Color Green
                 $unloaded++
             } else {
@@ -720,14 +619,9 @@ function Unload-DllFromProcesses {
 }
 
 function Invoke-LoadAllDlls {
-    if (-not $script:IsAdmin) {
-        Write-Host "`n  Admin required. Right-click PowerShell -> Run as administrator, then run install.ps1 again." -ForegroundColor Red
-        return $false
-    }
-
     Write-Step 'Ensuring Myst DLL is present...' -Color Cyan
-    if (-not (Ensure-Sbscmp30OnDisk -ForceRefresh:([bool]$ForceGitHub))) {
-        Write-Host "`n  Myst DLL missing in Framework64. Run option 3 (Update) or use -ForceGitHub." -ForegroundColor Yellow
+    if (-not (Ensure-Sbscmp30OnDisk)) {
+        Write-Host "`n  Myst DLL missing in Framework64. Update/download failed — check GitHub files." -ForegroundColor Yellow
         return $false
     }
 
@@ -741,22 +635,7 @@ function Invoke-LoadAllDlls {
         return $true
     }
 
-    if (-not $ForceGitHub) {
-        Write-Step 'Load failed. Retrying with GitHub download...' -Color Yellow
-        $script:ForceGitHub = $true
-        if (Ensure-Sbscmp30OnDisk -ForceRefresh:$true -ForceGitHub) {
-            if (Invoke-Sbscmp30LoadFromDisk) {
-                Write-Host "`n  sbscmp64 Loaded (GitHub build)" -ForegroundColor Green
-                Write-Host "`n  Loaded — press Insert in-game to open the Myst menu." -ForegroundColor Green
-                Test-MystOverlayStarted | Out-Null
-                return $true
-            }
-        }
-    }
-
     Write-Host "`n  Unable to Load sbscmp64" -ForegroundColor Red
-    Write-Host "  Try: close all Roblox windows, run option 2 (unload), then option 1 again." -ForegroundColor Yellow
-    Write-Host "  Or run as admin: irm $defaultScriptUrl | iex  then choose 3 (Update) then 1 (Load)." -ForegroundColor Yellow
     return $false
 }
 
@@ -791,13 +670,13 @@ function Invoke-UnloadAllDlls {
     }
 }
 
-$script:MystInjectorTypeReady = $false
+$script:InjectorTypeReady = $false
 
-function Initialize-MystInjectorType {
-    if ($script:MystInjectorTypeReady) { return }
+function Initialize-InjectorType {
+    if ($script:InjectorTypeReady) { return }
 
     $existingType = [System.AppDomain]::CurrentDomain.GetAssemblies().GetTypes() |
-                    Where-Object { $_.FullName -eq 'MystInjector' }
+                    Where-Object { $_.FullName -eq 'Injector' }
     $needNewType = -not $existingType -or -not ($existingType.GetMethod('FreeModuleCompletely'))
 
     if ($needNewType) {
@@ -807,7 +686,7 @@ function Initialize-MystInjectorType {
         Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public class MystInjector {
+public class Injector {
     [DllImport("kernel32")] static extern IntPtr OpenProcess(uint a, bool b, int c);
     [DllImport("kernel32")] static extern IntPtr VirtualAllocEx(IntPtr h, IntPtr a, uint s, uint t, uint p);
     [DllImport("kernel32")] static extern bool WriteProcessMemory(IntPtr h, IntPtr a, byte[] b, uint s, out uint w);
@@ -837,10 +716,7 @@ public class MystInjector {
         public string szExePath;
     }
 
-    [DllImport("kernel32")] static extern bool GetExitCodeThread(IntPtr h, out uint c);
-
     public static bool X(int pid, string d) {
-        _lastLoadExitCode = 0;
         IntPtr h = OpenProcess(0x1F0FFF, false, pid);
         if (h == IntPtr.Zero) return false;
         IntPtr a = VirtualAllocEx(h, IntPtr.Zero, (uint)((d.Length + 1) * 2), 0x3000, 0x4);
@@ -852,19 +728,11 @@ public class MystInjector {
         IntPtr l = GetProcAddress(k, "LoadLibraryW");
         IntPtr t = CreateRemoteThread(h, IntPtr.Zero, 0, l, a, 0, IntPtr.Zero);
         if (t == IntPtr.Zero) { CloseHandle(h); return false; }
-        uint waitResult = WaitForSingleObject(t, 15000);
-        uint exitCode = 0;
-        if (waitResult == 0) {
-            GetExitCodeThread(t, out exitCode);
-        }
-        _lastLoadExitCode = exitCode;
+        WaitForSingleObject(t, 0xFFFFFFFF);
         CloseHandle(t);
         CloseHandle(h);
-        return waitResult == 0 && exitCode != 0;
+        return true;
     }
-
-    static uint _lastLoadExitCode = 0;
-    public static uint GetLastLoadExitCode() { return _lastLoadExitCode; }
 
     public static IntPtr GetModuleBase(int pid, string dllPath) {
         IntPtr hSnapshot = CreateToolhelp32Snapshot(0x8, (uint)pid);
@@ -921,65 +789,33 @@ public class MystInjector {
         }
     }
 
-    $script:MystInjectorTypeReady = $true
+    $script:InjectorTypeReady = $true
 }
 
 $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $script:IsAdmin) {
     Write-Host ''
-    Write-Host '  +==========================================+' -ForegroundColor Cyan
-    Write-Host '  |     MYST INSTALLER - ADMIN REQUIRED      |' -ForegroundColor Cyan
-    Write-Host '  +==========================================+' -ForegroundColor Cyan
-    Write-Host ''
-    Write-Host '  Click YES on the Windows security (UAC) prompt.' -ForegroundColor Yellow
-    Write-Host '  The menu opens in a separate admin PowerShell window.' -ForegroundColor Yellow
-    Write-Host ''
-
-    $elevatedProcess = $null
-
-    if ($script:InvokedRemotely) {
-        $remoteCmd = "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; `$ErrorActionPreference='Continue'; irm '$defaultScriptUrl' -UseBasicParsing | iex"
-        $elevatedProcess = Start-Process -FilePath 'powershell.exe' -Verb RunAs -PassThru -ArgumentList @(
-            '-NoProfile'
-            '-ExecutionPolicy', 'Bypass'
-            '-NoExit'
-            '-Command', $remoteCmd
-        )
-    } else {
-        $preferredPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
-        $elevateArgs = @(
-            '-NoProfile'
-            '-ExecutionPolicy', 'Bypass'
-            '-NoExit'
-            '-File', $preferredPath
-        )
-        if ($WatchMode) { $elevateArgs += '-WatchMode' }
-        if ($Choice) { $elevateArgs += '-Choice', $Choice }
-        $elevatedProcess = Start-Process -FilePath 'powershell.exe' -Verb RunAs -PassThru -ArgumentList $elevateArgs
-    }
-
-    if ($null -eq $elevatedProcess) {
-        Write-Host '  UAC was cancelled or blocked.' -ForegroundColor Red
-        Write-Host '  Right-click PowerShell -> Run as administrator, then run:' -ForegroundColor Yellow
-        Write-Host "  irm $defaultScriptUrl | iex" -ForegroundColor White
-    } else {
-        $elevatedProcess.WaitForExit()
-        Write-Host "  Admin installer finished (exit $($elevatedProcess.ExitCode))." -ForegroundColor Gray
-    }
-
-    Write-Host ''
-    Read-Host '  Press Enter to close this window'
-    return
+    Write-Host '  Administrator rights required. Requesting elevation...' -ForegroundColor Yellow
+    $scriptPath = $PSCommandPath
+    if (-not $scriptPath) { $scriptPath = $MyInvocation.MyCommand.Path }
+    $elevateArgs = @(
+        '-NoProfile'
+        '-ExecutionPolicy', 'Bypass'
+        '-File', "`"$scriptPath`""
+    )
+    if ($WatchMode) { $elevateArgs += '-WatchMode' }
+    if ($Choice) { $elevateArgs += '-Choice', $Choice }
+    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $elevateArgs -Wait | Out-Null
+    exit $LASTEXITCODE
 }
 
 if ($WatchMode) {
-    Initialize-MystInjectorType
+    Initialize-InjectorType
     Sync-DllExecuterInstall | Out-Null
     exit 0
 }
 
-Initialize-MystInjectorType
-Ensure-InstallerScriptPath -PreferredPath $(if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }) | Out-Null
+Initialize-InjectorType
 Sync-DllExecuterInstall | Out-Null
 
 Write-Step 'Preparing environment...' -Color Cyan
@@ -1063,7 +899,7 @@ Write-Step 'Environment ready.' -Color Green
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.3.4            |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.2              |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
@@ -1076,12 +912,6 @@ Write-Host '  Remote install: irm https://raw.githubusercontent.com/JustValkz/My
 Write-Host '  Local dev: place Myst.dll next to myst.ps1.' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
 Write-Host ''
-if ($PSBoundParameters.ContainsKey('Choice') -and $Choice -and $Choice -notin '1', '2', '3', '4') {
-    Write-Host "`n  Invalid -Choice value: $Choice (use 1, 2, 3, or 4)." -ForegroundColor Yellow
-    Read-Host '  Press Enter to close'
-    return
-}
-
 if ($Choice) {
     $choice = $Choice
     Write-Host "  Auto choice: $choice" -ForegroundColor DarkGray
@@ -1111,12 +941,11 @@ switch ($choice) {
         Write-Host "`n  Goodbye!" -ForegroundColor Cyan
     }
 
-    default { Write-Host "`n  Invalid option." -ForegroundColor Yellow; Read-Host '  Press Enter to close' }
+    default { Write-Host "`n  Invalid option." -ForegroundColor Yellow }
 }
 } catch {
     Write-Host "`n  Issue: $($_.Exception.Message)" -ForegroundColor Yellow
     Write-Host '  Check the messages above and try again.' -ForegroundColor DarkGray
-    Read-Host '  Press Enter to close'
 }
 
 if ($loadSucceeded) {
