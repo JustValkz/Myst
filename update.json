@@ -1,7 +1,9 @@
 {
-  "version": "1.5.0",
-  "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
+  "version": "1.4.7",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
-  "manifest_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/update.json",
-  "notes": "v1.5.0 - Rolled back from v1.5.2/v1.5.3 performance regressions. Name Tag ESP, Colorbot tab, instant ESP tracking restored."
+  "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
+  "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
+  "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
+  "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
+  "notes": "v1.4.7 - Rolled back to exact v1.4.7 build. Advanced wallcheck, HBE wireframe fix, Colorbot. Instant ESP performance."
 }
