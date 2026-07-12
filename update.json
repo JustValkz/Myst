@@ -1,6 +1,8 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v1.4.0 - ESP preview: tung tung sahur model, chams/highlight opacity fix. Unified teamcheck (ESP/HBE wires/triggerbot). Offsets cache fallback + offsets_fix.ps1."
+  "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
+  "offsets_primary_url": "https://offsets.imtheo.lol/Offsets.hpp",
+  "notes": "v1.4.1 - GitHub offsets.hpp fallback when imtheo is blocked. ESP preview tung tung sahur + chams opacity. Unified teamcheck for ESP/HBE wires. Installer irm|iex fix. LOC bypass auto-install."
 }
