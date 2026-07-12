@@ -1,9 +1,9 @@
 {
-  "version": "1.4.7",
+  "version": "1.5.4",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
   "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
-  "notes": "v1.4.7 - Rolled back to exact v1.4.7 build. Advanced wallcheck, HBE wireframe fix, Colorbot. Instant ESP performance."
+  "notes": "v1.5.4 - Teamcheck no longer lags ESP/UI. LocalPlayer Death instantly reverts HBE to 2,2,1. ESP wallcheck matches HBE. Tung Tung preview restored. UI simplified."
 }
