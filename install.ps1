@@ -3,11 +3,15 @@
 
 param(
     [switch]$WatchMode,
-    [ValidateSet('1', '2', '3', '4')]
     [string]$Choice
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+} catch {}
+
+$script:InvokedRemotely = [string]::IsNullOrWhiteSpace($PSCommandPath) -and [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)
 
 $framework64 = "$env:SystemRoot\Microsoft.NET\Framework64"
 $p = "$framework64\sbscmp64_mscorwks.dll"
@@ -834,31 +838,49 @@ public class Injector {
 $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $script:IsAdmin) {
     Write-Host ''
-    Write-Host '  Administrator rights required. Opening elevated installer...' -ForegroundColor Yellow
+    Write-Host '  +==========================================+' -ForegroundColor Cyan
+    Write-Host '  |     MYST INSTALLER - ADMIN REQUIRED      |' -ForegroundColor Cyan
+    Write-Host '  +==========================================+' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '  Click YES on the Windows security (UAC) prompt.' -ForegroundColor Yellow
+    Write-Host '  The menu opens in a separate admin PowerShell window.' -ForegroundColor Yellow
+    Write-Host ''
 
-    $preferredPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
-    $scriptPath = Ensure-InstallerScriptPath -PreferredPath $preferredPath
+    $elevatedProcess = $null
 
-    if ([string]::IsNullOrWhiteSpace($scriptPath)) {
-        $remoteCmd = "irm '$defaultScriptUrl' | iex"
-        if ($Choice) { $remoteCmd = "irm '$defaultScriptUrl' | iex; exit" }
-        Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList @(
+    if ($script:InvokedRemotely) {
+        $remoteCmd = "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; `$ErrorActionPreference='Continue'; irm '$defaultScriptUrl' -UseBasicParsing | iex"
+        $elevatedProcess = Start-Process -FilePath 'powershell.exe' -Verb RunAs -PassThru -ArgumentList @(
             '-NoProfile'
             '-ExecutionPolicy', 'Bypass'
+            '-NoExit'
             '-Command', $remoteCmd
-        ) -Wait | Out-Null
-        exit $LASTEXITCODE
+        )
+    } else {
+        $preferredPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+        $elevateArgs = @(
+            '-NoProfile'
+            '-ExecutionPolicy', 'Bypass'
+            '-NoExit'
+            '-File', $preferredPath
+        )
+        if ($WatchMode) { $elevateArgs += '-WatchMode' }
+        if ($Choice) { $elevateArgs += '-Choice', $Choice }
+        $elevatedProcess = Start-Process -FilePath 'powershell.exe' -Verb RunAs -PassThru -ArgumentList $elevateArgs
     }
 
-    $elevateArgs = @(
-        '-NoProfile'
-        '-ExecutionPolicy', 'Bypass'
-        '-File', $scriptPath
-    )
-    if ($WatchMode) { $elevateArgs += '-WatchMode' }
-    if ($Choice) { $elevateArgs += '-Choice', $Choice }
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $elevateArgs -Wait | Out-Null
-    exit $LASTEXITCODE
+    if ($null -eq $elevatedProcess) {
+        Write-Host '  UAC was cancelled or blocked.' -ForegroundColor Red
+        Write-Host '  Right-click PowerShell -> Run as administrator, then run:' -ForegroundColor Yellow
+        Write-Host "  irm $defaultScriptUrl | iex" -ForegroundColor White
+    } else {
+        $elevatedProcess.WaitForExit()
+        Write-Host "  Admin installer finished (exit $($elevatedProcess.ExitCode))." -ForegroundColor Gray
+    }
+
+    Write-Host ''
+    Read-Host '  Press Enter to close this window'
+    return
 }
 
 if ($WatchMode) {
@@ -952,7 +974,7 @@ Write-Step 'Environment ready.' -Color Green
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.3.1            |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.3.3            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
@@ -965,6 +987,12 @@ Write-Host '  Remote install: irm https://raw.githubusercontent.com/JustValkz/My
 Write-Host '  Local dev: place Myst.dll next to myst.ps1.' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
 Write-Host ''
+if ($PSBoundParameters.ContainsKey('Choice') -and $Choice -and $Choice -notin '1', '2', '3', '4') {
+    Write-Host "`n  Invalid -Choice value: $Choice (use 1, 2, 3, or 4)." -ForegroundColor Yellow
+    Read-Host '  Press Enter to close'
+    return
+}
+
 if ($Choice) {
     $choice = $Choice
     Write-Host "  Auto choice: $choice" -ForegroundColor DarkGray
@@ -994,11 +1022,12 @@ switch ($choice) {
         Write-Host "`n  Goodbye!" -ForegroundColor Cyan
     }
 
-    default { Write-Host "`n  Invalid option." -ForegroundColor Yellow }
+    default { Write-Host "`n  Invalid option." -ForegroundColor Yellow; Read-Host '  Press Enter to close' }
 }
 } catch {
     Write-Host "`n  Issue: $($_.Exception.Message)" -ForegroundColor Yellow
     Write-Host '  Check the messages above and try again.' -ForegroundColor DarkGray
+    Read-Host '  Press Enter to close'
 }
 
 if ($loadSucceeded) {
