@@ -1,4 +1,4 @@
-# Myst — GitHub upload pack (v1.3)
+# Myst — GitHub upload pack (v1.4)
 
 Upload **everything in this folder** to `https://github.com/JustValkz/Myst/` (repo root):
 
