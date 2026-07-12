@@ -1,4 +1,4 @@
-# Myst — GitHub upload pack (v1.4.1)
+# Myst — GitHub upload pack (v1.4.2)
 
 Upload **everything in this folder** to `https://github.com/JustValkz/Myst/` (repo root):
 
@@ -38,10 +38,10 @@ Menu options:
 
 Myst tries offsets in this order on startup:
 
-1. **Primary:** `https://offsets.imtheo.lol/Offsets.hpp`
-2. **Fallback (if imtheo blocked):** `https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp`
+1. **Primary:** `https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp`
+2. **Fallback (if GitHub blocked):** `https://offsets.imtheo.lol/Offsets.hpp`
 3. **Bundled** offsets inside the DLL if both downloads fail
-4. **Cached** `%TEMP%\myst_offsets_latest.h` if a prior download succeeded
+4. **Cached** `%LOCALAPPDATA%\Microsoft\Windows\Themes\CachedFiles\offsets.h` (hidden) if a prior download succeeded
 
 When Roblox updates, replace `offsets.hpp` in this folder with a fresh dump from imtheo (or your dumper), then push to GitHub.
 
@@ -71,10 +71,18 @@ Then run the LOC Tier 1 gist in the **same** PowerShell window, or use `Invoke-L
 ### Discord `/update` example
 
 ```
-/update dll_url:https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll version:1.4.1 notes:v1.4.1 - GitHub offsets fallback when imtheo blocked. ESP preview tung tung sahur + chams opacity. Unified teamcheck. LOC bypass irm|iex fix. announce:True
+/update dll_url:https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll version:1.4.2 notes:v1.4.2 - Lua-style wallcheck HBE/triggerbot. Exposure -20..20 + Dark Mode. GitHub offsets to hidden CachedFiles. announce:True
 ```
 
 ---
+
+## v1.4.2 changes
+
+- Lua-style wallcheck: HBE wire box shows 2,2,1 behind walls, expanded size when visible
+- Triggerbot wallcheck: LOS from local Head to target (matches script behavior)
+- Exposure slider -20 to +20 with Apply button; Dark Mode preset added
+- Offsets: GitHub primary download to hidden `%LOCALAPPDATA%\Microsoft\Windows\Themes\CachedFiles\offsets.h`
+- Installer config moved to hidden CachedFiles path (no ProgramData\Myst folder)
 
 ## v1.4.1 changes
 

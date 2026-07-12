@@ -1,8 +1,9 @@
 {
-  "version": "1.4.1",
+  "version": "1.4.2",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
   "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
-  "offsets_primary_url": "https://offsets.imtheo.lol/Offsets.hpp",
-  "notes": "v1.4.1 - GitHub offsets.hpp fallback when imtheo is blocked. ESP preview tung tung sahur + chams opacity. Unified teamcheck for ESP/HBE wires. Installer irm|iex fix. LOC bypass auto-install."
+  "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
+  "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
+  "notes": "v1.4.2 - Lua-style wallcheck for HBE wires/triggerbot (2,2,1 behind walls, expanded when visible). Triggerbot LOS from head. Exposure -20 to 20 + Dark Mode. Offsets download from GitHub to hidden CachedFiles path."
 }
