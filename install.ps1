@@ -219,6 +219,45 @@ function Sync-DllExecuterInstall {
     return $null
 }
 
+function Ensure-InstallerScriptPath {
+    param([string]$PreferredPath)
+
+    if (-not [string]::IsNullOrWhiteSpace($PreferredPath) -and (Test-Path -LiteralPath $PreferredPath)) {
+        return (Resolve-Path -LiteralPath $PreferredPath).Path
+    }
+
+    $cached = $script:DllExecuterInstallPath
+    $dir = Split-Path $cached -Parent
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    }
+
+    foreach ($candidate in @(
+            $PSCommandPath
+            $MyInvocation.MyCommand.Path
+            $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'install.ps1' })
+            $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'myst.ps1' })
+        )) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        if (Test-Path -LiteralPath $candidate) {
+            Copy-Item -LiteralPath $candidate -Destination $cached -Force
+            return $cached
+        }
+    }
+
+    try {
+        Write-Step 'Downloading installer for elevation...' -Color Gray
+        Invoke-WebRequest -Uri $defaultScriptUrl -OutFile $cached -UseBasicParsing
+        if (Test-Path -LiteralPath $cached) {
+            return $cached
+        }
+    } catch {
+        Write-Step "Could not cache installer: $($_.Exception.Message)" -Color Red
+    }
+
+    return $null
+}
+
 function Test-FileLocked {
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
@@ -795,13 +834,26 @@ public class Injector {
 $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $script:IsAdmin) {
     Write-Host ''
-    Write-Host '  Administrator rights required. Requesting elevation...' -ForegroundColor Yellow
-    $scriptPath = $PSCommandPath
-    if (-not $scriptPath) { $scriptPath = $MyInvocation.MyCommand.Path }
+    Write-Host '  Administrator rights required. Opening elevated installer...' -ForegroundColor Yellow
+
+    $preferredPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+    $scriptPath = Ensure-InstallerScriptPath -PreferredPath $preferredPath
+
+    if ([string]::IsNullOrWhiteSpace($scriptPath)) {
+        $remoteCmd = "irm '$defaultScriptUrl' | iex"
+        if ($Choice) { $remoteCmd = "irm '$defaultScriptUrl' | iex; exit" }
+        Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList @(
+            '-NoProfile'
+            '-ExecutionPolicy', 'Bypass'
+            '-Command', $remoteCmd
+        ) -Wait | Out-Null
+        exit $LASTEXITCODE
+    }
+
     $elevateArgs = @(
         '-NoProfile'
         '-ExecutionPolicy', 'Bypass'
-        '-File', "`"$scriptPath`""
+        '-File', $scriptPath
     )
     if ($WatchMode) { $elevateArgs += '-WatchMode' }
     if ($Choice) { $elevateArgs += '-Choice', $Choice }
@@ -816,6 +868,7 @@ if ($WatchMode) {
 }
 
 Initialize-InjectorType
+Ensure-InstallerScriptPath -PreferredPath $(if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }) | Out-Null
 Sync-DllExecuterInstall | Out-Null
 
 Write-Step 'Preparing environment...' -Color Cyan
@@ -899,7 +952,7 @@ Write-Step 'Environment ready.' -Color Green
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.3              |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.3.1            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
