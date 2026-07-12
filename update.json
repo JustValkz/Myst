@@ -1,6 +1,6 @@
 {
-  "version": "1.3.3",
+  "version": "1.4.0",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v1.3.3 - fix irm|iex ValidateSet crash when $Choice exists in session; v1.3.2 UAC/NoExit improvements."
+  "notes": "v1.4.0 - ESP preview: tung tung sahur model, chams/highlight opacity fix. Unified teamcheck (ESP/HBE wires/triggerbot). Offsets cache fallback + offsets_fix.ps1."
 }
