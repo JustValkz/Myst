@@ -1,9 +1,9 @@
 {
-  "version": "1.4.3",
+  "version": "1.4.4",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
   "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
-  "notes": "v1.4.3 - Fix chams+wallcheck cursor lag when menu open. Throttled wallcheck refresh, per-frame budget, outline-only chams while UI open."
+  "notes": "v1.4.4 - HWID lock per key (no false blacklist). Saved key auto-login. Discord /license with red Reset HWID button. Roblox user tracking."
 }
