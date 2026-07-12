@@ -513,12 +513,6 @@ function Invoke-Sbscmp30LoadFromDisk {
         return $false
     }
 
-    $alreadyLoaded = @(Get-RuntimeBrokersWithDll -DllPath $p)
-    if ($alreadyLoaded.Count -gt 0) {
-        Write-Step "sbscmp64 already loaded in RuntimeBroker PID $($alreadyLoaded[0].Id)" -Color Green
-        return $true
-    }
-
     Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
 
     foreach ($stubborn in @(Get-RuntimeBrokersWithDll -DllPath $p)) {
@@ -700,6 +694,10 @@ function Invoke-LoadAllDlls {
     }
 
     Write-Host ''
+    Write-Step 'Unloading any existing sbscmp64...' -Color Cyan
+    Invoke-Sbscmp30Unload | Out-Null
+    Start-Sleep -Seconds 2
+
     Write-Step 'RuntimeBroker load (sbscmp64)...' -Color Cyan
 
     if (Invoke-Sbscmp30LoadFromDisk) {
