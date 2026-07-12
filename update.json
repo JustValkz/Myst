@@ -1,9 +1,9 @@
 {
-  "version": "1.4.6",
+  "version": "1.4.7",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
   "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
-  "notes": "v1.4.6 - Fix ESP boxes in Operation One and other custom games with nested character rigs (recursive part scan + RootPart support)."
+  "notes": "v1.4.7 - Advanced wallcheck (fail-closed, head LOS, nested body parts). Triggerbot/HBE only fire or show 5x5x5 when enemy is visible; behind walls HBE wireframe stays 2x2x1. New Colorbot in Combat (pixel-based trigger)."
 }
