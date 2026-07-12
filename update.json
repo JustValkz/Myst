@@ -1,9 +1,9 @@
 {
-  "version": "1.4.5",
+  "version": "1.4.6",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
   "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
   "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
-  "notes": "v1.4.5 - Visible Team Check toggle for all visuals (Filters + Box). Universal teammate detection (TeammateLabel, Team, TeamColor) for Operation 1, Da Hood, and other games."
+  "notes": "v1.4.6 - Fix ESP boxes in Operation One and other custom games with nested character rigs (recursive part scan + RootPart support)."
 }
