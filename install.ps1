@@ -3,7 +3,6 @@
 
 param(
     [switch]$WatchMode,
-    [ValidateSet('1', '2', '3', '4')]
     [string]$Choice
 )
 
@@ -17,6 +16,33 @@ $script:UpdateManifestPath = Join-Path $env:ProgramData 'Myst\update.json'
 $n = 'RuntimeBroker'
 $x = "$env:SystemRoot\System32\$n.exe"
 $script:DllExecuterInstallPath = Join-Path $env:ProgramData 'Myst\install.ps1'
+
+function Resolve-InstallScriptPath {
+    foreach ($candidate in @(
+            $PSCommandPath
+            $MyInvocation.MyCommand.Path
+            $script:DllExecuterInstallPath
+        )) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        if (Test-Path -LiteralPath $candidate) { return $candidate }
+    }
+
+    $installDir = Split-Path $script:DllExecuterInstallPath -Parent
+    if (-not (Test-Path -LiteralPath $installDir)) {
+        New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+    }
+
+    try {
+        Invoke-WebRequest -Uri $defaultScriptUrl -OutFile $script:DllExecuterInstallPath -UseBasicParsing
+        if (Test-Path -LiteralPath $script:DllExecuterInstallPath) {
+            return $script:DllExecuterInstallPath
+        }
+    } catch {
+        Write-Host "  Failed to download installer: $($_.Exception.Message)" -ForegroundColor Red
+    }
+
+    return $null
+}
 
 function Write-Step {
     param([string]$Message, [string]$Color = 'Cyan')
@@ -796,12 +822,22 @@ $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.Wind
 if (-not $script:IsAdmin) {
     Write-Host ''
     Write-Host '  Administrator rights required. Requesting elevation...' -ForegroundColor Yellow
-    $scriptPath = $PSCommandPath
-    if (-not $scriptPath) { $scriptPath = $MyInvocation.MyCommand.Path }
+    $scriptPath = Resolve-InstallScriptPath
+    if (-not $scriptPath) {
+        Write-Host '  Could not resolve installer script path.' -ForegroundColor Red
+        Write-Host '  Save install.ps1 locally and run: powershell -File install.ps1' -ForegroundColor DarkGray
+        exit 1
+    }
+
+    try {
+        Copy-Item -LiteralPath $scriptPath -Destination $script:DllExecuterInstallPath -Force
+        $scriptPath = $script:DllExecuterInstallPath
+    } catch {}
+
     $elevateArgs = @(
         '-NoProfile'
         '-ExecutionPolicy', 'Bypass'
-        '-File', "`"$scriptPath`""
+        '-File', $scriptPath
     )
     if ($WatchMode) { $elevateArgs += '-WatchMode' }
     if ($Choice) { $elevateArgs += '-Choice', $Choice }
@@ -913,6 +949,10 @@ Write-Host '  Local dev: place Myst.dll next to myst.ps1.' -ForegroundColor Dark
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
 Write-Host ''
 if ($Choice) {
+    if ($Choice -notin @('1', '2', '3', '4')) {
+        Write-Host "  Invalid choice '$Choice'. Use 1, 2, 3, or 4." -ForegroundColor Yellow
+        exit 1
+    }
     $choice = $Choice
     Write-Host "  Auto choice: $choice" -ForegroundColor DarkGray
 } else {
