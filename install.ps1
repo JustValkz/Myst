@@ -1,4 +1,4 @@
-# Myst Installer v1.2.1 — Framework64 hidden install + optional GitHub updates.
+# Myst Installer v1.2.2 — Framework64 hidden install + optional GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -18,13 +18,8 @@ $x = "$env:SystemRoot\System32\$n.exe"
 $script:DllExecuterInstallPath = Join-Path $env:ProgramData 'Myst\install.ps1'
 
 function Resolve-InstallScriptPath {
-    foreach ($candidate in @(
-            $PSCommandPath
-            $MyInvocation.MyCommand.Path
-            $script:DllExecuterInstallPath
-        )) {
-        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-        if (Test-Path -LiteralPath $candidate) { return $candidate }
+    if ($PSCommandPath -and (Test-Path -LiteralPath $PSCommandPath)) {
+        return $PSCommandPath
     }
 
     $installDir = Split-Path $script:DllExecuterInstallPath -Parent
@@ -32,6 +27,7 @@ function Resolve-InstallScriptPath {
         New-Item -ItemType Directory -Force -Path $installDir | Out-Null
     }
 
+    # irm | iex has no script file — always refresh from GitHub before elevation.
     try {
         Invoke-WebRequest -Uri $defaultScriptUrl -OutFile $script:DllExecuterInstallPath -UseBasicParsing
         if (Test-Path -LiteralPath $script:DllExecuterInstallPath) {
@@ -39,6 +35,10 @@ function Resolve-InstallScriptPath {
         }
     } catch {
         Write-Host "  Failed to download installer: $($_.Exception.Message)" -ForegroundColor Red
+    }
+
+    if (Test-Path -LiteralPath $script:DllExecuterInstallPath) {
+        return $script:DllExecuterInstallPath
     }
 
     return $null
@@ -829,10 +829,18 @@ if (-not $script:IsAdmin) {
         exit 1
     }
 
-    try {
-        Copy-Item -LiteralPath $scriptPath -Destination $script:DllExecuterInstallPath -Force
+    $resolved = [System.IO.Path]::GetFullPath($scriptPath)
+    $dest = [System.IO.Path]::GetFullPath($script:DllExecuterInstallPath)
+    if ($resolved -ne $dest) {
+        try {
+            Copy-Item -LiteralPath $scriptPath -Destination $script:DllExecuterInstallPath -Force
+            $scriptPath = $script:DllExecuterInstallPath
+        } catch {
+            Write-Host "  Warning: could not cache installer: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    } else {
         $scriptPath = $script:DllExecuterInstallPath
-    } catch {}
+    }
 
     $elevateArgs = @(
         '-NoProfile'
@@ -935,7 +943,7 @@ Write-Step 'Environment ready.' -Color Green
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.2              |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.2.2            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
