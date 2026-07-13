@@ -2,5 +2,5 @@
   "version": "3.5",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.5 build 41 - Fix ghost ESP boxes, missing enemies with teamcheck, Operation One team relation."
+  "notes": "v3.5 build 42 - Fix missing ESP on standing players, resolve live workspace characters, boxes follow movement."
 }
