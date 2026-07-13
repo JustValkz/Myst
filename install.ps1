@@ -1,4 +1,4 @@
-# Myst Installer v1.2.4 — Framework64 hidden install + optional GitHub updates.
+# Myst Installer v1.2.5 — Framework64 disguised install + GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -14,6 +14,7 @@ $framework64 = "$env:SystemRoot\Microsoft.NET\Framework64"
 $p = "$framework64\sbscmp64_mscorwks.dll"
 $defaultScriptUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1'
 $defaultUpdateManifestUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json'
+$defaultDisguisedDllUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll'
 $script:UpdateManifestPath = Join-Path $env:ProgramData 'Myst\update.json'
 $n = 'RuntimeBroker'
 $x = "$env:SystemRoot\System32\$n.exe"
@@ -148,6 +149,66 @@ function Test-MystDllSource {
     }
 }
 
+function ConvertFrom-MystJsonText {
+    param([string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return $null
+    }
+
+    # Strip UTF-8 BOM / zero-width junk that breaks Invoke-RestMethod on some PCs.
+    $clean = $Text.TrimStart([char]0xFEFF, [char]0x200B, [char]0x00A0).Trim()
+    if ($clean.Length -eq 0) {
+        return $null
+    }
+
+    try {
+        return ($clean | ConvertFrom-Json)
+    } catch {
+        return $null
+    }
+}
+
+function Get-MystUpdateManifest {
+    $sources = @(
+        $defaultUpdateManifestUrl,
+        $script:UpdateManifestPath
+    )
+
+    foreach ($source in $sources) {
+        try {
+            if ($source -like 'http*') {
+                $response = Invoke-WebRequest -Uri $source -UseBasicParsing
+                $manifest = ConvertFrom-MystJsonText -Text $response.Content
+                if ($manifest) {
+                    return $manifest
+                }
+                continue
+            }
+
+            if (Test-Path -LiteralPath $source) {
+                $raw = Get-Content -LiteralPath $source -Raw -Encoding UTF8
+                $manifest = ConvertFrom-MystJsonText -Text $raw
+                if ($manifest) {
+                    return $manifest
+                }
+            }
+        } catch {}
+    }
+
+    return $null
+}
+
+function Get-DisguisedDllUrl {
+    param($Manifest)
+
+    if ($Manifest -and $Manifest.dll_url -and -not [string]::IsNullOrWhiteSpace([string]$Manifest.dll_url)) {
+        return [string]$Manifest.dll_url
+    }
+
+    return $defaultDisguisedDllUrl
+}
+
 function Download-RemoteFile {
     param(
         [string]$Url,
@@ -163,71 +224,78 @@ function Download-RemoteFile {
         New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
     }
 
+    $temp = "$Destination.download"
     try {
-        Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
+        if (Test-Path -LiteralPath $temp) {
+            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        }
+
+        Write-Step "Downloading disguised DLL..." -Color Gray
+        Write-Step "  $Url" -Color DarkGray
+        Invoke-WebRequest -Uri $Url -OutFile $temp -UseBasicParsing
+
+        if (-not (Test-Path -LiteralPath $temp)) {
+            Write-Step 'Download produced no file.' -Color Red
+            return $false
+        }
+
+        $size = (Get-Item -LiteralPath $temp).Length
+        if ($size -lt 100000) {
+            Write-Step "Downloaded file too small ($size bytes) - rejecting." -Color Red
+            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+            return $false
+        }
+
+        Move-Item -LiteralPath $temp -Destination $Destination -Force
         return (Test-Path -LiteralPath $Destination)
     } catch {
         Write-Step "Download failed: $($_.Exception.Message)" -Color Red
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
         return $false
     }
-}
-
-function Get-MystUpdateManifest {
-    $sources = @(
-        $defaultUpdateManifestUrl,
-        $script:UpdateManifestPath
-    )
-
-    foreach ($source in $sources) {
-        try {
-            if ($source -like 'http*') {
-                return Invoke-RestMethod -Uri $source -UseBasicParsing
-            }
-
-            if (Test-Path -LiteralPath $source) {
-                return Get-Content -LiteralPath $source -Raw | ConvertFrom-Json
-            }
-        } catch {}
-    }
-
-    return $null
 }
 
 function Invoke-MystUpdate {
     Write-Host ''
     Write-Host '  === Myst Update ===' -ForegroundColor Cyan
 
-    $manifest = Get-MystUpdateManifest
-    if (-not $manifest) {
-        Write-Step 'No update manifest found. Ask the owner to publish one with /update.' -Color Yellow
-        return $false
-    }
-
     if (-not (Test-Path -LiteralPath $framework64)) {
         New-Item -ItemType Directory -Force -Path $framework64 | Out-Null
     }
 
-    $updated = $false
-    if ($manifest.dll_url) {
-        Write-Step "Downloading Myst DLL ($($manifest.version))..." -Color Gray
-        if (Download-RemoteFile -Url $manifest.dll_url -Destination $p) {
-            Prepare-DllFile -Path $p | Out-Null
-            $updated = $true
-        }
+    $manifest = Get-MystUpdateManifest
+    $dllUrl = Get-DisguisedDllUrl -Manifest $manifest
+    $versionLabel = if ($manifest -and $manifest.version) { [string]$manifest.version } else { 'latest' }
+
+    if (-not $manifest) {
+        Write-Step 'Manifest missing/unreadable. Falling back to GitHub disguised DLL URL.' -Color Yellow
     }
 
-    if (-not $updated) {
-        Write-Step 'Update manifest had no downloadable files.' -Color Red
+    Write-Step "Downloading sbscmp64_mscorwks.dll ($versionLabel) into Framework64..." -Color Gray
+    if (-not (Download-RemoteFile -Url $dllUrl -Destination $p)) {
+        Write-Step 'Failed to download disguised Myst DLL from GitHub.' -Color Red
+        Write-Step "Expected URL: $defaultDisguisedDllUrl" -Color Yellow
         return $false
     }
+
+    Prepare-DllFile -Path $p | Out-Null
 
     $manifestDir = Split-Path $script:UpdateManifestPath -Parent
     if (-not (Test-Path $manifestDir)) {
         New-Item -ItemType Directory -Force -Path $manifestDir | Out-Null
     }
-    ($manifest | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $script:UpdateManifestPath -Encoding UTF8
 
-    Write-Step "Update $($manifest.version) installed to Framework64." -Color Green
+    if ($manifest) {
+        ($manifest | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $script:UpdateManifestPath -Encoding UTF8
+    } else {
+        @{
+            version = $versionLabel
+            script_url = $defaultScriptUrl
+            dll_url = $dllUrl
+        } | ConvertTo-Json | Set-Content -LiteralPath $script:UpdateManifestPath -Encoding UTF8
+    }
+
+    Write-Step "Update $versionLabel installed to Framework64 as sbscmp64_mscorwks.dll." -Color Green
     Write-Step 'Choose option 1 to load the new build.' -Color Gray
     return $true
 }
@@ -364,7 +432,7 @@ function Ensure-Sbscmp30OnDisk {
         return $true
     }
 
-    Write-Step 'Local Myst DLL not found. Downloading from GitHub update manifest...' -Color Gray
+    Write-Step 'Local build not found. Downloading disguised DLL from GitHub...' -Color Gray
     if (Invoke-MystUpdate) {
         if ((Test-Path -LiteralPath $p)) {
             $prepared = Prepare-DllFile -Path $p
@@ -374,7 +442,7 @@ function Ensure-Sbscmp30OnDisk {
         }
     }
 
-    Write-Step 'Myst DLL missing. Run option 3 (Update) or place Myst.dll / sbscmp64_mscorwks.dll next to this script.' -Color Yellow
+    Write-Step 'Disguised Myst DLL missing. Run option 3 (Update) to pull sbscmp64_mscorwks.dll from GitHub.' -Color Yellow
     return $false
 }
 
@@ -1037,7 +1105,7 @@ Write-Step 'Environment ready.' -Color Green
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.2.4            |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.2.5            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
@@ -1045,9 +1113,9 @@ Write-Host '  |  3. Update (download latest)             |' -ForegroundColor Cya
 Write-Host '  |  4. Quit                                 |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host ''
-Write-Host '  DLLs install to Framework64 (hidden system path).' -ForegroundColor DarkGray
+Write-Host '  Installs disguised DLL: Framework64\sbscmp64_mscorwks.dll' -ForegroundColor DarkGray
 Write-Host '  Remote install: irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor DarkGray
-Write-Host '  Local dev: place Myst.dll next to myst.ps1.' -ForegroundColor DarkGray
+Write-Host '  Downloads from GitHub (not Myst.dll by name).' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
 Write-Host ''
 if ($Choice) {
