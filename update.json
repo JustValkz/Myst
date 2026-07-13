@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.3",
+  "version": "3.4",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.3 build 35 - Fixed local deploy paths. Menu shows v3.3 (build 35) when loaded correctly."
+  "notes": "v3.4 build 36 - Instant ESP/player refresh on respawn, rejoin, and roster changes. Zero refresh delays."
 }
