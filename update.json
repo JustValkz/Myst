@@ -2,5 +2,5 @@
   "version": "3.5",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.5 build 51 - Fix missing ESP boxes: full OO roster, ghost-only-outside-WS, bounds fallbacks, richer on-screen+txt detection."
+  "notes": "v3.5 build 52 - Cull dead/lobby ghost boxes, fix status ESP on stale cache_out_ws, clearer detection log."
 }
