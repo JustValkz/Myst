@@ -2,5 +2,5 @@
   "version": "3.3",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.3 build 34 - Fix local deploy path, restore v2.6-style ESP visibility, show build number in UI."
+  "notes": "v3.3 build 35 - Fixed local deploy paths. Menu shows v3.3 (build 35) when loaded correctly."
 }

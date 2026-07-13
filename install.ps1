@@ -76,6 +76,8 @@ function Resolve-LocalBuildDll {
         $buildCandidates = @()
         if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
             $buildCandidates += @(
+                (Join-Path $PSScriptRoot '..\build\Myst.dll')
+                (Join-Path $PSScriptRoot 'build\Myst.dll')
                 (Join-Path $PSScriptRoot '..\T4\build\Myst.dll')
                 (Join-Path $PSScriptRoot 'T4\build\Myst.dll')
             )
