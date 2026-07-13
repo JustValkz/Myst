@@ -1,6 +1,6 @@
 {
-  "version": "2.9",
+  "version": "3.0",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v2.9 - Operation One ESP fix (recursive parts, invisible check rewrite), exact Roblox avatar preview, teamcheck/deadcheck stable."
+  "notes": "v3.0 - Universal ghost ESP fix: transparent part filter, live character validation, inactive FallingDown rig detection, Operation One support."
 }
