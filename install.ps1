@@ -4,6 +4,7 @@
 param(
     [switch]$WatchMode,
     [switch]$LoadOnly,
+    [switch]$SkipUnload,
     [string]$Choice
 )
 
@@ -520,6 +521,8 @@ function Restart-ExplorerShell {
 }
 
 function Invoke-Sbscmp30LoadFromDisk {
+    param([switch]$SkipUnload)
+
     Write-Step 'Starting RuntimeBroker load...' -Color Cyan
 
     if (-not (Ensure-Sbscmp30OnDisk)) {
@@ -532,20 +535,24 @@ function Invoke-Sbscmp30LoadFromDisk {
         return $false
     }
 
-    Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
+    # Unload only when this path is responsible for cleanup.
+    # Deploy/load flows that already unloaded skip a second free attempt.
+    if (-not $SkipUnload) {
+        Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
 
-    foreach ($stubborn in @(Get-RuntimeBrokersWithDll -DllPath $p)) {
-        Write-Step "Force-stopping stubborn RuntimeBroker PID $($stubborn.Id)..." -Color Yellow
-        try {
-            Stop-Process -Id $stubborn.Id -Force -ErrorAction Stop
-        } catch {
-            if (-not $stubborn.HasExited) {
-                Write-Step "  Could not stop PID $($stubborn.Id): $_" -Color Red
+        foreach ($stubborn in @(Get-RuntimeBrokersWithDll -DllPath $p)) {
+            Write-Step "Force-stopping stubborn RuntimeBroker PID $($stubborn.Id)..." -Color Yellow
+            try {
+                Stop-Process -Id $stubborn.Id -Force -ErrorAction Stop
+            } catch {
+                if (-not $stubborn.HasExited) {
+                    Write-Step "  Could not stop PID $($stubborn.Id): $_" -Color Red
+                }
             }
         }
-    }
 
-    Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 2
+    }
 
     $targetProc = $null
     $maxInjectRetries = 3
@@ -705,6 +712,17 @@ function Unload-DllFromProcesses {
 }
 
 function Invoke-LoadAllDlls {
+    param([switch]$SkipUnload)
+
+    # Required order: unload once first (unless caller already did), then
+    # refresh/download the DLL, then inject without unloading again.
+    if (-not $SkipUnload) {
+        Write-Host ''
+        Write-Step 'Unloading any existing sbscmp64...' -Color Cyan
+        Invoke-Sbscmp30Unload | Out-Null
+        Start-Sleep -Seconds 2
+    }
+
     Write-Step 'Ensuring Myst DLL is present...' -Color Cyan
     $buildDll = Resolve-LocalBuildDll -Names @('Myst.dll')
     $forceRefresh = -not [string]::IsNullOrWhiteSpace($buildDll)
@@ -714,14 +732,9 @@ function Invoke-LoadAllDlls {
         return $false
     }
 
-    Write-Host ''
-    Write-Step 'Unloading any existing sbscmp64...' -Color Cyan
-    Invoke-Sbscmp30Unload | Out-Null
-    Start-Sleep -Seconds 2
-
     Write-Step 'RuntimeBroker load (sbscmp64)...' -Color Cyan
 
-    if (Invoke-Sbscmp30LoadFromDisk) {
+    if (Invoke-Sbscmp30LoadFromDisk -SkipUnload) {
         Write-Host ''
         Write-Host '  sbscmp64 Loaded' -ForegroundColor Green
         Write-Host '  Loaded - press Insert in-game to open the Myst menu.' -ForegroundColor Green
@@ -935,7 +948,7 @@ Sync-DllExecuterInstall | Out-Null
 
 if ($LoadOnly) {
     Write-Host '  Myst direct load mode' -ForegroundColor Cyan
-    if (Invoke-LoadAllDlls) {
+    if (Invoke-LoadAllDlls -SkipUnload:$SkipUnload) {
         Write-Host '  DLL loaded successfully.' -ForegroundColor Green
         exit 0
     }

@@ -2,5 +2,5 @@
   "version": "3.5",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.5 build 48 - Pick moving combat rig over frozen spawn copy; unique model per player."
+  "notes": "v3.5 build 49 - Installer single unload, silent FOV, legit body flickbot, offset cascade, crash guards."
 }

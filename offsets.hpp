@@ -1,6 +1,5 @@
-/*
- * Myst offsets mirror — fallback when https://offsets.imtheo.lol/Offsets.hpp is blocked.
- * Source: bundled_offsets.h (theo dump)
+﻿/*
+ * Auto-converted from https://offsets.imtheo.lol/Offsets.hpp
  * Roblox Version: version-36a2600cebf1487d
  */
 
