@@ -2,5 +2,5 @@
   "version": "3.5",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.5 build 37 - Operation One: better custom rig detection, root-part fallback boxes, all body parts gathered."
+  "notes": "v3.5 build 38 - Operation One: deep workspace character lookup + resilient single-part ESP fallback."
 }
