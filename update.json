@@ -2,5 +2,5 @@
   "version": "3.5",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.5 build 38 - Operation One: deep workspace character lookup + resilient single-part ESP fallback."
+  "notes": "v3.5 build 39 - Revert build 38 ESP break, fix invisible check (workspace ghosts only), fix held tool names."
 }
