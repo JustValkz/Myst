@@ -2,5 +2,5 @@
   "version": "3.5",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.5 build 53 - Stick ESP boxes to moving combat models, not idle lobby clones."
+  "notes": "v3.5 build 54 - ESP works in background; bind boxes to moving combat models not pads."
 }
