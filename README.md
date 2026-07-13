@@ -1,4 +1,4 @@
-# Myst — GitHub upload pack (v1.2)
+# Myst — GitHub upload pack (v2.9)
 
 Upload **everything in this folder** to `https://github.com/JustValkz/Myst/` (repo root):
 
@@ -21,7 +21,13 @@ irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex
 
 ## When you release a new build
 
-1. Replace `sbscmp64_mscorwks.dll` in this folder (copy from `Myst.dll`)
+1. Replace `sbscmp64_mscorwks.dll` in this folder (copy from `T4\build\Myst.dll`)
 2. Bump `version` in `update.json`
 3. Push to GitHub
 4. Run Discord `/update` with the new `dll_url` link
+
+## v2.9 SHA256 (sbscmp64_mscorwks.dll)
+
+```
+A5FC739CCC619C86DDF0C39E8880D41B21772D9833CE9413C87B82C9C0BD140D
+```

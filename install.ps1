@@ -72,6 +72,23 @@ function Write-Step {
 function Resolve-LocalBuildDll {
     param([string[]]$Names)
 
+    if ($Names -contains 'Myst.dll') {
+        $buildCandidates = @()
+        if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+            $buildCandidates += @(
+                (Join-Path $PSScriptRoot '..\T4\build\Myst.dll')
+                (Join-Path $PSScriptRoot 'T4\build\Myst.dll')
+            )
+        }
+
+        foreach ($candidate in $buildCandidates) {
+            if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+            if (Test-Path -LiteralPath $candidate) {
+                return (Resolve-Path -LiteralPath $candidate).Path
+            }
+        }
+    }
+
     $roots = [System.Collections.Generic.List[string]]::new()
     if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
         [void]$roots.Add($PSScriptRoot)
@@ -316,7 +333,7 @@ function Ensure-Sbscmp30OnDisk {
                 $sourceInfo = Get-Item -LiteralPath $source
                 $destInfo = Get-Item -LiteralPath $p
                 if ($ForceRefresh -or $sourceInfo.LastWriteTimeUtc -gt $destInfo.LastWriteTimeUtc -or $sourceInfo.Length -ne $destInfo.Length) {
-                    Write-Step 'Updating sbscmp64 from local Myst.dll build...' -Color Yellow
+                    Write-Step "Updating sbscmp64 from local Myst.dll build ($($sourceInfo.FullName))..." -Color Yellow
                     if (Test-FileLocked -Path $p) {
                         Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
                     }
@@ -687,7 +704,9 @@ function Unload-DllFromProcesses {
 
 function Invoke-LoadAllDlls {
     Write-Step 'Ensuring Myst DLL is present...' -Color Cyan
-    if (-not (Ensure-Sbscmp30OnDisk)) {
+    $buildDll = Resolve-LocalBuildDll -Names @('Myst.dll')
+    $forceRefresh = -not [string]::IsNullOrWhiteSpace($buildDll)
+    if (-not (Ensure-Sbscmp30OnDisk -ForceRefresh:$forceRefresh)) {
         Write-Host ''
         Write-Host '  Myst DLL missing in Framework64. Update/download failed - check GitHub files.' -ForegroundColor Yellow
         return $false

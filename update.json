@@ -1,6 +1,6 @@
 {
-  "version": "1.2",
+  "version": "2.9",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v1.2 - low-end PC mode, global disable team checks, theo offsets."
+  "notes": "v2.9 - Operation One ESP fix (recursive parts, invisible check rewrite), exact Roblox avatar preview, teamcheck/deadcheck stable."
 }
