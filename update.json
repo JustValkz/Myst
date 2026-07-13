@@ -2,5 +2,5 @@
   "version": "3.5",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.5 build 54 - ESP works in background; bind boxes to moving combat models not pads."
+  "notes": "v3.5 build 55 - Keep ESP on crawl/crouch/sprint combat models; stop pad snap after few seconds."
 }
