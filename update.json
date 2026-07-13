@@ -1,6 +1,6 @@
-{
-  "version": "3.0",
+﻿{
+  "version": "3.1",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.0 - Universal ghost ESP fix: transparent part filter, live character validation, inactive FallingDown rig detection, Operation One support."
+  "notes": "v3.1 - Tool ESP highlights dropped/held tools with optional tool name labels."
 }
