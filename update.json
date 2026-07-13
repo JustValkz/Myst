@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.2",
+  "version": "3.3",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.2 - Fix Operation One ESP not showing (removed over-aggressive transparency filtering) and move Tool ESP workspace scan off the render thread to eliminate lag."
+  "notes": "v3.3 build 34 - Fix local deploy path, restore v2.6-style ESP visibility, show build number in UI."
 }
