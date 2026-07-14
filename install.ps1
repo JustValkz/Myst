@@ -78,18 +78,24 @@ function Resolve-LocalBuildDll {
         $buildCandidates = @()
         if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
             $buildCandidates += @(
-                (Join-Path $PSScriptRoot '..\build\Myst.dll')
-                (Join-Path $PSScriptRoot 'build\Myst.dll')
                 (Join-Path $PSScriptRoot '..\T4\build\Myst.dll')
                 (Join-Path $PSScriptRoot 'T4\build\Myst.dll')
+                (Join-Path $PSScriptRoot '..\build\Myst.dll')
+                (Join-Path $PSScriptRoot 'build\Myst.dll')
             )
         }
 
+        $best = $null
         foreach ($candidate in $buildCandidates) {
             if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-            if (Test-Path -LiteralPath $candidate) {
-                return (Resolve-Path -LiteralPath $candidate).Path
+            if (-not (Test-Path -LiteralPath $candidate)) { continue }
+            $item = Get-Item -LiteralPath $candidate
+            if (-not $best -or $item.LastWriteTimeUtc -gt $best.LastWriteTimeUtc -or ($item.LastWriteTimeUtc -eq $best.LastWriteTimeUtc -and $item.Length -gt $best.Length)) {
+                $best = $item
             }
+        }
+        if ($best) {
+            return $best.FullName
         }
     }
 
