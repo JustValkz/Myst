@@ -295,8 +295,57 @@ function Invoke-MystUpdate {
         } | ConvertTo-Json | Set-Content -LiteralPath $script:UpdateManifestPath -Encoding UTF8
     }
 
-    Write-Step "Update $versionLabel installed to Framework64 as sbscmp64_mscorwks.dll." -Color Green
-    Write-Step 'Choose option 1 to load the new build.' -Color Gray
+    Write-Step "Latest $versionLabel installed to Framework64 as sbscmp64_mscorwks.dll." -Color Green
+    return $true
+}
+
+function Show-MystVersionInfo {
+    Write-Host ''
+    Write-Host '  === Myst Version ===' -ForegroundColor Cyan
+
+    $manifest = $null
+    try {
+        $response = Invoke-WebRequest -Uri $defaultUpdateManifestUrl -UseBasicParsing
+        $manifest = ConvertFrom-MystJsonText -Text $response.Content
+    } catch {}
+
+    if (-not $manifest) {
+        $manifest = Get-MystUpdateManifest
+    }
+
+    $remoteVersion = if ($manifest -and $manifest.version) { [string]$manifest.version } else { 'unknown' }
+    $remoteNotes = if ($manifest -and $manifest.notes) { [string]$manifest.notes } else { '' }
+
+    Write-Host ''
+    Write-Host "  Latest on GitHub : v$remoteVersion" -ForegroundColor Green
+    if (-not [string]::IsNullOrWhiteSpace($remoteNotes)) {
+        Write-Host "  Notes            : $remoteNotes" -ForegroundColor DarkGray
+    }
+
+    if (Test-Path -LiteralPath $p) {
+        $info = Get-Item -LiteralPath $p
+        $localVersion = 'unknown'
+        if (Test-Path -LiteralPath $script:UpdateManifestPath) {
+            try {
+                $localManifest = ConvertFrom-MystJsonText -Text (Get-Content -LiteralPath $script:UpdateManifestPath -Raw -Encoding UTF8)
+                if ($localManifest -and $localManifest.version) {
+                    $localVersion = [string]$localManifest.version
+                }
+            } catch {}
+        }
+
+        Write-Host "  Installed locally: v$localVersion" -ForegroundColor Cyan
+        Write-Host ("  DLL path         : {0}" -f $p) -ForegroundColor DarkGray
+        Write-Host ("  DLL size         : {0:N0} bytes" -f $info.Length) -ForegroundColor DarkGray
+        Write-Host ("  DLL modified     : {0}" -f $info.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')) -ForegroundColor DarkGray
+    } else {
+        Write-Host '  Installed locally: (not installed yet)' -ForegroundColor Yellow
+        Write-Host "  DLL path         : $p" -ForegroundColor DarkGray
+    }
+
+    Write-Host ''
+    Write-Host '  Tip: Install & Load always pulls the latest build from GitHub.' -ForegroundColor DarkGray
+    Write-Host '  There is nothing separate to "update" — option 1 already does that.' -ForegroundColor DarkGray
     return $true
 }
 
@@ -442,7 +491,7 @@ function Ensure-Sbscmp30OnDisk {
         }
     }
 
-    Write-Step 'Disguised Myst DLL missing. Run option 3 (Update) to pull sbscmp64_mscorwks.dll from GitHub.' -Color Yellow
+    Write-Step 'Disguised Myst DLL missing. Use option 1 (Install & Load) to pull sbscmp64_mscorwks.dll from GitHub.' -Color Yellow
     return $false
 }
 
@@ -466,7 +515,7 @@ function Test-DllOnDisk {
 
     if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
         Write-Step "$Label not found on disk: $Path" -Color Red
-        Write-Step 'Place Myst.dll (or sbscmp64_mscorwks.dll) next to this script, or use option 3 (Update).' -Color Yellow
+        Write-Step 'Place Myst.dll (or sbscmp64_mscorwks.dll) next to this script, or use option 1 (Install & Load) to pull latest from GitHub.' -Color Yellow
         return $false
     }
 
@@ -791,13 +840,30 @@ function Invoke-LoadAllDlls {
         Start-Sleep -Seconds 2
     }
 
-    Write-Step 'Ensuring Myst DLL is present...' -Color Cyan
+    Write-Step 'Ensuring latest Myst DLL is present...' -Color Cyan
     $buildDll = Resolve-LocalBuildDll -Names @('Myst.dll')
-    $forceRefresh = -not [string]::IsNullOrWhiteSpace($buildDll)
-    if (-not (Ensure-Sbscmp30OnDisk -ForceRefresh:$forceRefresh)) {
-        Write-Host ''
-        Write-Host '  Myst DLL missing in Framework64. Update/download failed - check GitHub files.' -ForegroundColor Yellow
-        return $false
+    if (-not [string]::IsNullOrWhiteSpace($buildDll)) {
+        # Dev machine: prefer newest local Myst.dll build.
+        if (-not (Ensure-Sbscmp30OnDisk -ForceRefresh)) {
+            Write-Host ''
+            Write-Host '  Myst DLL missing in Framework64. Local copy failed - check D:\Ext\main\main\build\Myst.dll.' -ForegroundColor Yellow
+            return $false
+        }
+    } else {
+        # End users: Install & Load always pulls the latest pack from GitHub.
+        if (Test-FileLocked -Path $p) {
+            Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
+        }
+        if (-not (Invoke-MystUpdate)) {
+            Write-Host ''
+            Write-Host '  Myst DLL missing in Framework64. Download failed - check GitHub files.' -ForegroundColor Yellow
+            return $false
+        }
+        if (-not (Prepare-DllFile -Path $p)) {
+            Write-Host ''
+            Write-Host '  Myst DLL download was empty/unreadable.' -ForegroundColor Yellow
+            return $false
+        }
     }
 
     Write-Step 'RuntimeBroker load (sbscmp64)...' -Color Cyan
@@ -1107,15 +1173,16 @@ Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |         MYST INSTALLER v1.2.5            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |  1. Install & Load                       |' -ForegroundColor Cyan
+Write-Host '  |  1. Install & Load (latest)              |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
-Write-Host '  |  3. Update (download latest)             |' -ForegroundColor Cyan
+Write-Host '  |  3. Version info                         |' -ForegroundColor Cyan
 Write-Host '  |  4. Quit                                 |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host ''
 Write-Host '  Installs disguised DLL: Framework64\sbscmp64_mscorwks.dll' -ForegroundColor DarkGray
 Write-Host '  Remote install: irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor DarkGray
-Write-Host '  Downloads from GitHub (not Myst.dll by name).' -ForegroundColor DarkGray
+Write-Host '  Option 1 always downloads the latest GitHub build (unless a local Myst.dll is newer).' -ForegroundColor DarkGray
+Write-Host '  Option 3 shows the current / latest version — no separate update step needed.' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
 Write-Host ''
 if ($Choice) {
@@ -1147,7 +1214,7 @@ switch ($choice) {
     }
 
     '3' {
-        Invoke-MystUpdate | Out-Null
+        Show-MystVersionInfo | Out-Null
     }
 
     '4' {
