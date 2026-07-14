@@ -1,1 +1,1 @@
-﻿{"dll_url":"https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll","notes":"v3.66 build 76 - Silent aim fixed: MouseService bullet redirect when cursor is off-target.","version":"3.66","script_url":"https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1"}
+﻿{"dll_url":"https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll","notes":"v3.67 build 77 - Instant triggerbot: fires same tick on cursor pixel; wallchecks kept.","version":"3.67","script_url":"https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1"}
