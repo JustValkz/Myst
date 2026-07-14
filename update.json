@@ -1,6 +1,1 @@
-{
-  "version": "3.5",
-  "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
-  "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.5 build 56 - Position-continuity ESP lock so crawl/sprint never snaps to pads."
-}
+{"dll_url":"https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll","notes":"v3.5 build 57 - Unique player-to-model assign + mover preference so boxes stay on the correct live body.","version":"3.5","script_url":"https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1"}
