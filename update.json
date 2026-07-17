@@ -1,1 +1,9 @@
-﻿{"dll_url":"https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll","notes":"v3.72 build 82 - Autopsy skeleton; legit curved flickbot; colorbot with lead.","version":"3.72","script_url":"https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1"}
+﻿{
+  "version": "3.73",
+  "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
+  "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
+  "offsets_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
+  "offsets_primary_url": "https://github.com/JustValkz/Myst/raw/refs/heads/main/offsets.hpp",
+  "offsets_fallback_url": "https://offsets.imtheo.lol/Offsets.hpp",
+  "notes": "v3.73 build 83 - Keybind capture fixed; offsets bundled fallback fixed; low-end triggerbot/combat perf."
+}
