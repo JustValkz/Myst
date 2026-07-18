@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.74",
+  "version": "3.76",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.74 build 84 - Low-End lag fix; head peek triggerbot; faster TB with micro prediction."
+  "notes": "v3.76 build 86 - UI crash guards, weak-PC menu throttling, blatant TB pacing, safe config delete."
 }
