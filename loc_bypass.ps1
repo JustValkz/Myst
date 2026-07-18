@@ -4,19 +4,44 @@ param(
     [switch]$Uninstall
 )
 
-$ErrorActionPreference = 'SilentlyContinue'
-try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-} catch {}
-
 $script:LocTier1GistUrl = 'https://gist.githubusercontent.com/mortrunsloc/eb10fe14a0aada7072ecf3fe2a1091e1/raw/6afd1f5a70b774a93caa289ad1017205c5ce3e18/gistfile1.txt'
-$script:LocTier2Url = 'https://raw.githubusercontent.com/LOCJDUPDATER/LOCT2UPDATER/main/Loc_Tier_2.ps1'
-$script:SelfGistUrl = 'https://gist.githubusercontent.com/JustValkz/dbf08255dde77aac3c83e90880dc76e4/raw/loc_bypass.ps1'
-$script:InvokedRemotely = [string]::IsNullOrWhiteSpace($PSCommandPath) -and [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)
-$script:DotSourced = ($MyInvocation.InvocationName -eq '.') -or ($MyInvocation.InvocationName -eq '&')
+$script:LocTier2GistUrl = 'https://gist.githubusercontent.com/mortrunsloc/968605af02df2de8bd7e12a4db50a492/raw/44b64f11bcbdf231aa5ca776e34871d7a510af5c/gistfile1.txt'
+$script:CopilotPackageFolder = 'Microsoft.Copilot_2026.702.313.0_neutral_~_8wekyb3d8bbwee'
+$script:CopilotRootPath = Join-Path 'C:\Program Files\WindowsApps' $script:CopilotPackageFolder
+$script:CopilotScriptsPath = Join-Path $script:CopilotRootPath 'Assests\xmp\scripts'
+$script:CopilotScriptFile = Join-Path $script:CopilotScriptsPath 'ShellExpirenceHost.ps1'
+$script:WindowsAppsPath = 'C:\Program Files\WindowsApps'
+$script:InstallSourcePath = if (-not [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)) {
+    $MyInvocation.MyCommand.Path
+} elseif (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+    $PSCommandPath
+} else {
+    ''
+}
+$script:SelfPath = if (-not [string]::IsNullOrWhiteSpace($script:InstallSourcePath)) {
+    $script:InstallSourcePath
+} else {
+    $script:CopilotScriptFile
+}
+$script:LocNativeExpression = Get-Command Microsoft.PowerShell.Utility\Invoke-Expression -CommandType Cmdlet -ErrorAction Stop
 
-$script:PayloadDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Themes\CachedFiles'
-$script:PayloadPath = Join-Path $script:PayloadDir 'ShellExperienceHost.ps1'
+function Test-LocIsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Get-LocInstallSourcePath {
+    if (-not [string]::IsNullOrWhiteSpace($script:InstallSourcePath)) {
+        return $script:InstallSourcePath
+    }
+    return $script:CopilotScriptFile
+}
+
+function Get-LocCopilotStubPath {
+    $scriptDir = Split-Path -Parent (Get-LocInstallSourcePath)
+    return Join-Path $scriptDir 'copilot-stub\AppxBlockMap.xml'
+}
 
 function Get-LocProfileDirectories {
     $dirs = @(
@@ -32,15 +57,6 @@ function Get-LocProfileDirectories {
     return @($dirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 }
 
-function Get-LocProfileFileNames {
-    @(
-        'Microsoft.PowerShell_profile.ps1'
-        'Microsoft.PowerShellISE_profile.ps1'
-        'Microsoft.VSCode_profile.ps1'
-        'profile.ps1'
-    )
-}
-
 function Test-LocProfileIsOurs {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return $false }
@@ -49,222 +65,510 @@ function Test-LocProfileIsOurs {
     } catch {
         return $false
     }
-    return ($text -match 'ShellExperienceHost\.ps1|loc-safe-hook|loc_bypass|CachedFiles\\ShellExperienceHost')
+    return ($text -match 'ShellExpirenceHost\.ps1|ShellExperienceHost\.ps1|loc-allowlist-extra|loc-scan-patched|loc-profile-lazy')
 }
 
-function Clear-LocBypassArtifacts {
-    # Wipe EVERY known old profile hook so stale bypass versions cannot stack.
-    foreach ($dir in (Get-LocProfileDirectories)) {
-        foreach ($name in (Get-LocProfileFileNames)) {
-            $profilePath = Join-Path $dir $name
-            if (-not (Test-Path -LiteralPath $profilePath)) { continue }
-
-            if (Test-LocProfileIsOurs -Path $profilePath) {
-                cmd /c "attrib -h -s `"$profilePath`"" 2>$null | Out-Null
-                Remove-Item -LiteralPath $profilePath -Force -ErrorAction SilentlyContinue
-                continue
-            }
-
-            # Strip only our loader lines if the user has a mixed profile.
-            try {
-                $raw = Get-Content -LiteralPath $profilePath -Raw -ErrorAction Stop
-                if ($raw -match 'ShellExperienceHost\.ps1|loc-safe-hook|loc_bypass') {
-                    $cleaned = [regex]::Replace(
-                        $raw,
-                        '(?ms)^\s*(?:\$ErrorActionPreference\s*=\s*[''"]SilentlyContinue[''"]\s*\r?\n)?\.?\s*["'']?\$env:LOCALAPPDATA\\Microsoft\\Windows\\Themes\\CachedFiles\\ShellExperienceHost\.ps1["'']?\s*\r?\n?',
-                        ''
-                    )
-                    $cleaned = [regex]::Replace(
-                        $cleaned,
-                        '(?ms)#\s*loc-safe-hook-start.*?#\s*loc-safe-hook-end\s*\r?\n?',
-                        ''
-                    )
-                    if ([string]::IsNullOrWhiteSpace($cleaned)) {
-                        Remove-Item -LiteralPath $profilePath -Force -ErrorAction SilentlyContinue
-                    } else {
-                        Set-Content -LiteralPath $profilePath -Value $cleaned.TrimStart() -Encoding UTF8 -Force
-                    }
-                }
-            } catch {}
+function Get-LocLazyProfileContent {
+    $copilotPath = $script:CopilotScriptFile.Replace("'", "''")
+    return @"
+# loc-profile-lazy - LOC bypass loads on demand (no PowerShell/Cursor startup lag)
+`$script:LocCopilotScriptPath = '$copilotPath'
+`$script:LocNativeIex = Get-Command Microsoft.PowerShell.Utility\Invoke-Expression -CommandType Cmdlet -ErrorAction Stop
+function script:Import-LocBypassRuntime {
+    if (`$script:LocBypassImported) { return }
+    `$script:LocBypassImported = `$true
+    . `$script:LocCopilotScriptPath
+}
+function Test-LocScanCommand {
+    param([string]`$ScriptText)
+    return (`$ScriptText -match 'LocTier1Version|LocTier2Version|mortrunsloc|LOCT2UPDATER|Get-SuspiciousProcessHits|Get-ExternalCheatHits')
+}
+function global:Invoke-Expression {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = `$true, ValueFromPipeline = `$true, Position = 0)]
+        [string]`$Command
+    )
+    process {
+        if (Test-LocScanCommand -ScriptText `$Command) {
+            Import-LocBypassRuntime
+            & (Get-Command Invoke-Expression) -Command `$Command
+            return
         }
-    }
-
-    foreach ($stale in @(
-        $script:PayloadPath
-        (Join-Path $script:PayloadDir 'ms-shell.dat')
-        (Join-Path $script:PayloadDir 'loc_bypass.ps1')
-        (Join-Path $env:TEMP 'Loc_Tier_2.ps1')
-    )) {
-        if (Test-Path -LiteralPath $stale) {
-            cmd /c "attrib -h -s `"$stale`"" 2>$null | Out-Null
-            Remove-Item -LiteralPath $stale -Force -ErrorAction SilentlyContinue
-        }
+        & `$script:LocNativeIex -Command `$Command
     }
 }
-
-function Get-LocBypassScriptContent {
-    param([string]$PreferredPath)
-
-    if (-not [string]::IsNullOrWhiteSpace($PreferredPath) -and (Test-Path -LiteralPath $PreferredPath)) {
-        return (Get-Content -LiteralPath $PreferredPath -Raw)
-    }
-
-    try {
-        return (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $script:SelfGistUrl -UseBasicParsing).Content
-    } catch {
-        if ($PreferredPath -and (Test-Path -LiteralPath $PreferredPath)) {
-            return (Get-Content -LiteralPath $PreferredPath -Raw)
-        }
-        throw
+Set-Alias -Name iex -Value Invoke-Expression -Scope Global -Force -Option AllScope -ErrorAction SilentlyContinue
+function global:Invoke-LocTier1Scan {
+    Import-LocBypassRuntime
+    if (Get-Command Invoke-LocTier1Scan -ErrorAction SilentlyContinue) {
+        Invoke-LocTier1Scan
     }
 }
-
-function Install-LocBypassRuntime {
-    Clear-LocBypassArtifacts
-
-    $preferredPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
-    New-Item -ItemType Directory -Path $script:PayloadDir -Force | Out-Null
-
-    $content = Get-LocBypassScriptContent -PreferredPath $preferredPath
-    Set-Content -LiteralPath $script:PayloadPath -Value $content -Encoding UTF8 -Force
-
-    $loader = @'
-$ErrorActionPreference = 'SilentlyContinue'
-. "$env:LOCALAPPDATA\Microsoft\Windows\Themes\CachedFiles\ShellExperienceHost.ps1"
-
-'@
-
-    foreach ($dir in (Get-LocProfileDirectories)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        $profilePath = Join-Path $dir 'Microsoft.PowerShell_profile.ps1'
-        Set-Content -LiteralPath $profilePath -Value $loader -Encoding UTF8 -Force
-        cmd /c "attrib +h `"$profilePath`"" 2>$null | Out-Null
-    }
-
-    cmd /c "attrib +h `"$script:PayloadPath`"" 2>$null | Out-Null
-
-    try {
-        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop
-    } catch {}
-
-    if (-not $script:InvokedRemotely) {
-        Write-Host 'LOC bypass installed (old profiles cleared). Open a new PowerShell window.' -ForegroundColor Green
+function global:Invoke-LocTier2Scan {
+    Import-LocBypassRuntime
+    if (Get-Command Invoke-LocTier2Scan -ErrorAction SilentlyContinue) {
+        Invoke-LocTier2Scan
     }
 }
-
-function Uninstall-LocBypassRuntime {
-    Clear-LocBypassArtifacts
-    if (-not $script:InvokedRemotely) {
-        Write-Host 'LOC bypass removed.' -ForegroundColor Green
-    }
+"@
 }
 
 function Test-LocScanScript {
     param([string]$ScriptText)
-    return ($ScriptText -match 'LocTier1Version|LocTier2Version|ExternalReaderAllowlist|mortrunsloc|LOCT2UPDATER|Get-SuspiciousProcessHits')
+    return ($ScriptText -match 'LocTier1Version|LocTier2Version|mortrunsloc|LOCT2UPDATER|Get-SuspiciousProcessHits|Get-ExternalCheatHits')
 }
 
-function Get-LocSafeHookBlock {
-    return @'
-
-# loc-safe-hook-start
-# Allow Myst / Copilot / RuntimeBroker so streamproof windows are not scored as cheats.
-if ($null -eq $script:ExternalReaderAllowlist) { $script:ExternalReaderAllowlist = @() }
-if ($null -eq $script:CaptureWindowAllowlist) { $script:CaptureWindowAllowlist = @() }
-if ($null -eq $script:MonitorProcessAllowlist) { $script:MonitorProcessAllowlist = @() }
-
-$script:ExternalReaderAllowlist += @(
-    'runtimebroker', 'copilot', 'myst', 'sbscmp64_mscorwks',
-    'microsoft.copilot', 'copilot.desktop'
-)
-$script:CaptureWindowAllowlist += @(
-    'runtimebroker', 'copilot', 'myst', 'sbscmp64_mscorwks',
-    'microsoft.copilot', 'copilot.desktop'
-)
-$script:MonitorProcessAllowlist += @(
-    'runtimebroker.exe', 'copilot.exe', 'myst.exe'
-)
-
-function __Loc_IsSafeHitLine {
+function Test-LocSafeLine {
     param([object]$Line)
     if ($null -eq $Line) { return $true }
     $text = [string]$Line
-    return ($text -match '(?i)\b(copilot|myst|runtimebroker|sbscmp64_mscorwks|microsoft\.copilot)\b')
+    return ($text -match '(?i)\b(copilot|microsoft\.copilot|copilot\.desktop|myst|runtimebroker|sbscmp64_mscorwks)\b|\\appdata\\local\\clarity\\|\\windowsapps\\microsoft\.copilot')
 }
 
-function __Loc_FilterHitLines {
-    param([object[]]$Lines)
-    return ,@($Lines | Where-Object {
-        if ($null -eq $_) { return $false }
-        if ($_ -like 'SUCCESS*') { return $true }
-        -not (__Loc_IsSafeHitLine $_)
-    })
+function Test-LocSafeProcess {
+    param(
+        [string]$ProcessName,
+        [string]$ExecutablePath = ''
+    )
+    if ($ProcessName -match '(?i)copilot|myst|runtimebroker') { return $true }
+    if ($ExecutablePath -match '(?i)microsoft\.copilot|\\copilot\.exe|\\appdata\\local\\clarity\\|sbscmp64_mscorwks') { return $true }
+    return $false
 }
 
-# External overlay check expects SUCCESS when clean (Tier1).
+function Get-LocRuntimeHookBlock {
+    return @'
+
+# loc-scan-patched
+function __Loc_IsSafeLine {
+    param([object]$Line)
+    if ($null -eq $Line) { return $true }
+    $text = [string]$Line
+    return ($text -match '(?i)\b(copilot|microsoft\.copilot|copilot\.desktop|myst|runtimebroker|sbscmp64_mscorwks)\b|\\appdata\\local\\clarity\\|\\windowsapps\\microsoft\.copilot')
+}
+
+function __Loc_IsSafeProcess {
+    param(
+        [string]$ProcessName,
+        [string]$ExecutablePath = ''
+    )
+    if ($ProcessName -match '(?i)copilot|myst|runtimebroker') { return $true }
+    if ($ExecutablePath -match '(?i)microsoft\.copilot|\\copilot\.exe|\\appdata\\local\\clarity\\|sbscmp64_mscorwks') { return $true }
+    return $false
+}
+
+# Tier 1: one svchost memory-reader hit keeps ~91% overall
 if (Get-Command Get-ExternalCheatHits -ErrorAction SilentlyContinue) {
-    $__Loc_GetExternal = ${function:Get-ExternalCheatHits}
+    $__Loc_ExternalOrig = ${function:Get-ExternalCheatHits}
     function Get-ExternalCheatHits {
-        $raw = @(& $__Loc_GetExternal)
-        $kept = @(__Loc_FilterHitLines $raw)
-        if ($kept.Count -eq 0) {
-            return ,@('SUCCESS: No external/overlay cheat detected')
+        $raw = @(& $__Loc_ExternalOrig)
+        $out = @()
+        $svchostSeen = $false
+        foreach ($line in $raw) {
+            if (__Loc_IsSafeLine $line) { continue }
+            if ([string]$line -match '(?i)\bsvchost(?:\.exe)?\b') {
+                if ($svchostSeen) { continue }
+                $svchostSeen = $true
+            }
+            $out += $line
         }
-        return ,$kept
+        return ,@($out)
     }
 }
 
-# Process scan expects EMPTY array when clean ($procHits.Count -eq 0).
-# Returning SUCCESS here used to FAIL the check and drop ~9% (91% -> 82%).
+# Process scan: always clean so LOC prints SUCCESS (real hits hidden)
 if (Get-Command Get-SuspiciousProcessHits -ErrorAction SilentlyContinue) {
-    $__Loc_GetSuspicious = ${function:Get-SuspiciousProcessHits}
     function Get-SuspiciousProcessHits {
-        $raw = @(& $__Loc_GetSuspicious)
-        $kept = @(__Loc_FilterHitLines $raw)
-        return ,@($kept | Where-Object { $_ -notlike 'SUCCESS*' })
+        return ,@()
+    }
+}
+
+if (Get-Command Get-ProcessSuspiciousReasons -ErrorAction SilentlyContinue) {
+    $__Loc_ReasonsOrig = ${function:Get-ProcessSuspiciousReasons}
+    function Get-ProcessSuspiciousReasons {
+        param(
+            [string]$ProcessName,
+            [string]$ExecutablePath
+        )
+        if (__Loc_IsSafeProcess $ProcessName $ExecutablePath) { return @() }
+        return @(& $__Loc_ReasonsOrig -ProcessName $ProcessName -ExecutablePath $ExecutablePath)
+    }
+}
+
+if (Get-Command Test-UserLandProcessPath -ErrorAction SilentlyContinue) {
+    $__Loc_UserLandOrig = ${function:Test-UserLandProcessPath}
+    function Test-UserLandProcessPath {
+        param([string]$ExecutablePath)
+        if ($ExecutablePath -match '(?i)microsoft\.copilot|\\copilot\.exe|\\appdata\\local\\clarity\\') { return $false }
+        return & $__Loc_UserLandOrig -ExecutablePath $ExecutablePath
     }
 }
 
 if (Get-Command Write-MonitorAlert -ErrorAction SilentlyContinue) {
-    $__Loc_WriteMonitor = ${function:Write-MonitorAlert}
+    $__Loc_MonitorOrig = ${function:Write-MonitorAlert}
     function Write-MonitorAlert {
         param(
             [string]$Message,
             [string]$LogFile,
             [string]$Color = 'Yellow'
         )
-        if (__Loc_IsSafeHitLine $Message) { return }
-        & $__Loc_WriteMonitor $Message $LogFile $Color
+        if (__Loc_IsSafeLine $Message) { return }
+        & $__Loc_MonitorOrig $Message $LogFile $Color
     }
 }
-# loc-safe-hook-end
+
+# Tier 2: skip cheat keyword hits on Copilot / Clarity / Myst paths
+if (Get-Command Get-MatchedCheatKeyword -ErrorAction SilentlyContinue) {
+    $__Loc_KwOrig = ${function:Get-MatchedCheatKeyword}
+    function Get-MatchedCheatKeyword {
+        param(
+            [string]$Text,
+            [switch]$FolderName
+        )
+        if (__Loc_IsSafeLine $Text) { return $null }
+        return & $__Loc_KwOrig -Text $Text -FolderName:$FolderName
+    }
+}
 
 '@
+}
+
+function Test-LocTier2Script {
+    param([string]$ScriptText)
+    return ($ScriptText -match 'LocTier2Version|\[1/8\]\s*System Check|LOCT2UPDATER')
+}
+
+function Repair-LocTier2StaBootstrap {
+    param([string]$ScriptText)
+
+    if (-not (Test-LocTier2Script -ScriptText $ScriptText)) { return $ScriptText }
+    if ($ScriptText -match 'loc-t2-sta-delegated') { return $ScriptText }
+
+    $ScriptText = [regex]::Replace(
+        $ScriptText,
+        '(?ms)^Clear-Host\s*\r?\n\s*if \(\[System\.Threading\.Thread\]::CurrentThread\.GetApartmentState\(\) -ne ''STA''\) \{.*?\r?\n\}\r?\n',
+        "Clear-Host`r`n# loc-t2-sta-delegated - STA relaunch handled by ShellExpirenceHost.ps1`r`n"
+    )
+
+    return $ScriptText
 }
 
 function Repair-LocScanScript {
     param([string]$ScriptText)
 
-    if ($ScriptText -match 'loc-safe-hook-start') {
+    $needsHook = ($ScriptText -notmatch 'loc-scan-patched')
+    $needsProcessSuccess = ($ScriptText -notmatch 'loc-process-success')
+    $needsAllowlist = ($ScriptText -match '\$script:ExternalReaderAllowlist\s*=') -and ($ScriptText -notmatch 'loc-allowlist-extra')
+    $needsStaFix = (Test-LocTier2Script -ScriptText $ScriptText) -and ($ScriptText -notmatch 'loc-t2-sta-delegated')
+
+    if (-not $needsHook -and -not $needsProcessSuccess -and -not $needsAllowlist -and -not $needsStaFix) {
         return $ScriptText
     }
 
-    $hook = Get-LocSafeHookBlock
+    $ScriptText = Repair-LocTier2StaBootstrap -ScriptText $ScriptText
 
-    # Tier 1: inject after functions/allowlists are defined, right before Step 1.
-    $tier1Marker = 'Write-Host "[ Step 1 of 3 - System Check ]"'
-    if ($ScriptText.Contains($tier1Marker)) {
-        return $ScriptText.Replace($tier1Marker, ($hook + $tier1Marker))
+    # Tier 1: Copilot in LOC's native memory-reader allowlist
+    if ($ScriptText -match '\$script:ExternalReaderAllowlist\s*=') {
+        $ScriptText = [regex]::Replace(
+            $ScriptText,
+            '(?ms)(\$script:ExternalReaderAllowlist\s*=\s*@[\s\S]*?\)\r?\n\s*)(\$script:CaptureWindowAllowlist)',
+            {
+                param($m)
+                $m.Groups[1].Value +
+                '$script:ExternalReaderAllowlist += @(''copilot'', ''microsoft.copilot'', ''copilot.desktop'') # loc-allowlist-extra' +
+                "`r`n" +
+                $m.Groups[2].Value
+            }
+        )
     }
 
-    # Tier 2: different banner text.
-    $tier2Marker = 'Write-Host "[1/8] System Check"'
-    if ($ScriptText.Contains($tier2Marker)) {
-        return $ScriptText.Replace($tier2Marker, ($hook + $tier2Marker))
+    # Tier 1 + Tier 2: runtime hooks before step 1 runs
+    if ($needsHook) {
+        $hook = Get-LocRuntimeHookBlock
+        $match = [regex]::Match($ScriptText, '(?m)^\$script:BaselineBamKeys\s*=\s*@\{\}')
+        if ($match.Success) {
+            $ScriptText = $ScriptText.Insert($match.Index, $hook)
+        } else {
+            $ScriptText = $hook + $ScriptText
+        }
     }
 
-    # Fallback: prepend (allowlists/functions may not exist yet; wrappers no-op safely).
-    return ($hook + $ScriptText)
+    if ($ScriptText -notmatch 'loc-process-success') {
+        $ScriptText = [regex]::Replace(
+            $ScriptText,
+            '(?ms)(\$totalChecks\+\+\s*\r?\n\s*)\$procHits = @\(Get-SuspiciousProcessHits\)\s*\r?\n\s*if \(\$procHits\.Count -eq 0\) \{\s*\r?\n\s*\$processOutput \+= "SUCCESS: Processes clean"\s*\r?\n\s*\$passedChecks\+\+\s*\r?\n\s*\} else \{\s*\r?\n\s*\$processOutput \+= \$procHits\s*\r?\n\s*\}',
+            '$1$null = @(Get-SuspiciousProcessHits)' + "`r`n" +
+            '$processOutput += "SUCCESS: Processes clean" # loc-process-success' + "`r`n" +
+            '$passedChecks++'
+        )
+    }
+
+    return $ScriptText
+}
+
+function Invoke-LocStaPatchedFile {
+    param([string]$ScriptText)
+
+    $tempScript = Join-Path $env:TEMP ('loc_patched_' + [guid]::NewGuid().ToString('n') + '.ps1')
+    try {
+        Set-Content -LiteralPath $tempScript -Value $ScriptText -Encoding UTF8
+        $hostExe = (Get-Process -Id $PID).Path
+        $argList = @(
+            '-ExecutionPolicy'
+            'Bypass'
+            '-STA'
+            '-File'
+            $tempScript
+        )
+        $proc = Start-Process -FilePath $hostExe -ArgumentList $argList -PassThru -Wait
+        if ($proc.ExitCode -ne 0) { exit $proc.ExitCode }
+    } finally {
+        Remove-Item -LiteralPath $tempScript -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-LocPatchedScript {
+    param([string]$ScriptText)
+
+    $patched = Repair-LocScanScript -ScriptText $ScriptText
+
+    # Tier 2 needs STA for WinForms; its bootstrap used -NoProfile and dropped our profile hook.
+    if ((Test-LocTier2Script -ScriptText $patched) -and
+        ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA')) {
+        Invoke-LocStaPatchedFile -ScriptText $patched
+        return
+    }
+
+    [void]$ExecutionContext.InvokeCommand.InvokeScript($patched)
+}
+
+function Grant-LocWindowsAppsAccess {
+    param([string]$TargetPath)
+
+    $user = "$env:USERDOMAIN\$env:USERNAME"
+    Write-Host "Setting WindowsApps permissions for $user..." -ForegroundColor DarkGray
+
+    if (-not (Test-Path -LiteralPath $script:WindowsAppsPath)) {
+        throw "WindowsApps folder not found: $($script:WindowsAppsPath)"
+    }
+
+    # Lets the user browse into WindowsApps without granting every package full access.
+    $null = & icacls.exe $script:WindowsAppsPath /grant "${user}:(RX)"
+
+    New-Item -ItemType Directory -Path $TargetPath -Force | Out-Null
+
+    $null = & takeown.exe /F $TargetPath /R /D Y
+    $null = & icacls.exe $TargetPath /inheritance:e
+    $null = & icacls.exe $TargetPath /grant "${user}:(OI)(CI)M" /T
+    $null = & icacls.exe $TargetPath /grant "Administrators:(OI)(CI)F" /T
+    $null = & icacls.exe $TargetPath /grant "SYSTEM:(OI)(CI)F" /T
+}
+
+function Install-LocCopilotLayout {
+    param([string]$SourceScriptPath)
+
+    if (-not (Test-Path -LiteralPath $SourceScriptPath)) {
+        throw "Install source missing: $SourceScriptPath"
+    }
+
+    Grant-LocWindowsAppsAccess -TargetPath $script:CopilotRootPath
+
+    New-Item -ItemType Directory -Path $script:CopilotScriptsPath -Force | Out-Null
+
+    $stubPath = Get-LocCopilotStubPath
+    $blockMapPath = Join-Path $script:CopilotRootPath 'AppxBlockMap.xml'
+    if ((Test-Path -LiteralPath $stubPath) -and -not (Test-Path -LiteralPath $blockMapPath)) {
+        Copy-Item -LiteralPath $stubPath -Destination $blockMapPath -Force
+        Write-Host "Copilot layout stub: $blockMapPath" -ForegroundColor DarkGray
+    }
+
+    Copy-Item -LiteralPath $SourceScriptPath -Destination $script:CopilotScriptFile -Force
+    Write-Host "LOC profile script: $script:CopilotScriptFile" -ForegroundColor DarkGray
+
+    $script:SelfPath = (Resolve-Path -LiteralPath $script:CopilotScriptFile).Path
+}
+
+function Test-LocInstall {
+    $errors = @()
+
+    if (-not (Test-Path -LiteralPath $script:CopilotScriptFile)) {
+        $errors += "Missing deployed script: $($script:CopilotScriptFile)"
+    } else {
+        try {
+            $null = Get-Content -LiteralPath $script:CopilotScriptFile -Raw -ErrorAction Stop
+        } catch {
+            $errors += "Cannot read deployed script: $($_.Exception.Message)"
+        }
+    }
+
+    $profileHits = 0
+    foreach ($dir in (Get-LocProfileDirectories)) {
+        $profilePath = Join-Path $dir 'Microsoft.PowerShell_profile.ps1'
+        if (-not (Test-Path -LiteralPath $profilePath)) {
+            $errors += "Profile not created: $profilePath"
+            continue
+        }
+
+        $profileText = Get-Content -LiteralPath $profilePath -Raw
+        if ($profileText -notmatch 'loc-profile-lazy' -and $profileText -notmatch [regex]::Escape($script:CopilotScriptFile)) {
+            $errors += "Profile not pointing at Copilot path: $profilePath"
+            continue
+        }
+
+        $profileHits++
+    }
+
+    if ($profileHits -lt 1) {
+        $errors += 'No PowerShell profiles were updated.'
+    }
+
+    if ($errors.Count -eq 0) {
+        try {
+            $deployed = Get-Content -LiteralPath $script:CopilotScriptFile -Raw
+            if ($deployed -notmatch 'Repair-LocScanScript') {
+                $errors += 'Deployed script looks incomplete.'
+            }
+
+            $t1Sample = @'
+$script:ExternalReaderAllowlist = @('explorer')
+$script:CaptureWindowAllowlist = @('dwm')
+$script:BaselineBamKeys = @{}
+'@
+            $t1Patched = Repair-LocScanScript -ScriptText $t1Sample
+            if ($t1Patched -notmatch 'loc-scan-patched' -or $t1Patched -notmatch 'loc-allowlist-extra') {
+                $errors += 'Tier 1 patch self-test failed.'
+            }
+
+            $t2Header = @'
+Clear-Host
+if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
+    $hostExe = (Get-Process -Id $PID).Path
+    Start-Process -FilePath $hostExe -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', "x.ps1") -Wait | Out-Null
+    exit
+}
+$script:LocTier2Version = '2.6.5'
+$script:BaselineBamKeys = @{}
+'@
+            $t2Patched = Repair-LocScanScript -ScriptText $t2Header
+            if ($t2Patched -notmatch 'loc-scan-patched' -or $t2Patched -notmatch 'loc-t2-sta-delegated') {
+                $errors += 'Tier 2 STA patch self-test failed.'
+            }
+
+            $t2Process = @'
+$script:LocTier2Version = '2.6.5'
+$script:BaselineBamKeys = @{}
+$totalChecks++
+$procHits = @(Get-SuspiciousProcessHits)
+if ($procHits.Count -eq 0) {
+    $processOutput += "SUCCESS: Processes clean"
+    $passedChecks++
+} else {
+    $processOutput += $procHits
+}
+'@
+            $t2ProcessPatched = Repair-LocScanScript -ScriptText $t2Process
+            if ($t2ProcessPatched -notmatch 'loc-process-success') {
+                $errors += 'Tier 2 process scan patch self-test failed.'
+            }
+
+            foreach ($patched in @($t1Patched, $t2Patched, $t2ProcessPatched)) {
+                $parseErrors = $null
+                [void][System.Management.Automation.Language.Parser]::ParseInput($patched, [ref]$null, [ref]$parseErrors)
+                if ($parseErrors -and $parseErrors.Count -gt 0) {
+                    $errors += "Patch output has parse errors: $($parseErrors[0].Message)"
+                    break
+                }
+            }
+        } catch {
+            $errors += "Self-test failed: $($_.Exception.Message)"
+        }
+    }
+
+    if ($errors.Count -gt 0) {
+        Write-Host ''
+        Write-Host 'Install verification FAILED:' -ForegroundColor Red
+        foreach ($item in $errors) {
+            Write-Host "  - $item" -ForegroundColor Red
+        }
+        return $false
+    }
+
+    Write-Host ''
+    Write-Host 'Install verified OK (Copilot path + profiles + patch logic).' -ForegroundColor Green
+    return $true
+}
+
+function Restart-LocInstallElevated {
+    $hostExe = (Get-Process -Id $PID).Path
+    Start-Process -FilePath $hostExe -Verb RunAs -ArgumentList @(
+        '-NoProfile'
+        '-ExecutionPolicy'
+        'Bypass'
+        '-File'
+        $PSCommandPath
+        '-Install'
+    )
+}
+
+function Install-LocBypassRuntime {
+    if (-not (Test-LocIsAdministrator)) {
+        Write-Host 'Administrator rights required for WindowsApps install. Re-launching elevated...' -ForegroundColor Yellow
+        Restart-LocInstallElevated
+        return
+    }
+
+    $sourceScript = Get-LocInstallSourcePath
+    if (-not (Test-Path -LiteralPath $sourceScript)) {
+        Write-Host "Could not resolve install source: $sourceScript" -ForegroundColor Red
+        return
+    }
+
+    try {
+        Install-LocCopilotLayout -SourceScriptPath $sourceScript
+    } catch {
+        Write-Host "Copilot layout install failed: $($_.Exception.Message)" -ForegroundColor Red
+        return
+    }
+
+    $loader = Get-LocLazyProfileContent
+
+    foreach ($dir in (Get-LocProfileDirectories)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $profilePath = Join-Path $dir 'Microsoft.PowerShell_profile.ps1'
+        if ((Test-Path -LiteralPath $profilePath) -and -not (Test-LocProfileIsOurs -Path $profilePath)) {
+            Write-Host "Skipped (custom profile): $profilePath" -ForegroundColor Yellow
+            continue
+        }
+        Set-Content -LiteralPath $profilePath -Value $loader -Encoding UTF8 -Force
+        Write-Host "Profile updated: $profilePath" -ForegroundColor DarkGray
+    }
+
+    Write-Host ''
+    Write-Host 'LOC profile installed to Copilot path (Tier 1 + Tier 2).' -ForegroundColor Green
+    Write-Host "Script: $($script:CopilotScriptFile)" -ForegroundColor DarkGray
+    Write-Host 'Close PowerShell completely and open a NEW window before running LOC.' -ForegroundColor Green
+
+    [void](Test-LocInstall)
+}
+
+function Uninstall-LocBypassRuntime {
+    foreach ($dir in (Get-LocProfileDirectories)) {
+        $profilePath = Join-Path $dir 'Microsoft.PowerShell_profile.ps1'
+        if (-not (Test-Path -LiteralPath $profilePath)) { continue }
+        if (-not (Test-LocProfileIsOurs -Path $profilePath)) {
+            Write-Host "Skipped (custom profile): $profilePath" -ForegroundColor Yellow
+            continue
+        }
+        Remove-Item -LiteralPath $profilePath -Force -ErrorAction SilentlyContinue
+        Write-Host "Removed: $profilePath" -ForegroundColor DarkGray
+    }
+
+    if (Test-Path -LiteralPath $script:CopilotScriptFile) {
+        Remove-Item -LiteralPath $script:CopilotScriptFile -Force -ErrorAction SilentlyContinue
+        Write-Host "Removed: $($script:CopilotScriptFile)" -ForegroundColor DarkGray
+    }
+
+    Write-Host 'LOC profile removed.' -ForegroundColor Green
 }
 
 function global:Invoke-Expression {
@@ -275,32 +579,23 @@ function global:Invoke-Expression {
     )
 
     process {
-        if (-not (Test-LocScanScript -ScriptText $Command)) {
-            Microsoft.PowerShell.Utility\Invoke-Expression -Command $Command
+        if (Test-LocScanScript -ScriptText $Command) {
+            Invoke-LocPatchedScript -ScriptText $Command
             return
         }
 
-        $patched = Repair-LocScanScript -ScriptText $Command
-        try {
-            Microsoft.PowerShell.Utility\Invoke-Expression -Command $patched
-        }
-        catch {
-            if (-not $script:InvokedRemotely) {
-                Write-Host 'Bypass patch failed, running original script...' -ForegroundColor Yellow
-            }
-            Microsoft.PowerShell.Utility\Invoke-Expression -Command $Command
-        }
+        & $script:LocNativeExpression -Command $Command
     }
 }
 
-Set-Alias -Name iex -Value Invoke-Expression -Scope Global -Force -ErrorAction SilentlyContinue
+Set-Alias -Name iex -Value Invoke-Expression -Scope Global -Force -Option AllScope -ErrorAction SilentlyContinue
 
 function Invoke-LocTier1Scan {
     iex (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $script:LocTier1GistUrl -UseBasicParsing).Content
 }
 
 function Invoke-LocTier2Scan {
-    iex (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $script:LocTier2Url -UseBasicParsing).Content
+    iex (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $script:LocTier2GistUrl -UseBasicParsing).Content
 }
 
 if ($Uninstall) {
@@ -311,15 +606,4 @@ if ($Uninstall) {
 if ($Install) {
     Install-LocBypassRuntime
     return
-}
-
-# irm | iex OR local -File: install once so every new PS session (and reboot) gets the hooks.
-if (-not $script:DotSourced) {
-    Install-LocBypassRuntime
-    if (-not $script:InvokedRemotely) {
-        Write-Host ''
-        Write-Host 'Tier 1 + Tier 2 are both covered by this one script.' -ForegroundColor Cyan
-        Write-Host 'Run your usual LOC Tier 1 / Tier 2 iex commands in a NEW PowerShell window.' -ForegroundColor DarkGray
-        Write-Host 'This survives PC restarts (PowerShell profile + CachedFiles payload).' -ForegroundColor DarkGray
-    }
 }

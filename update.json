@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.76",
+  "version": "3.77",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.76 build 86 - UI crash guards, weak-PC menu throttling, blatant TB pacing, safe config delete."
+  "notes": "v3.77 build 87 - Fix 5s Roblox hitches (wallcheck/explorer RPM), lazy PowerShell LOC profile (no terminal lag)."
 }
