@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.81",
+  "version": "3.82",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.81 - Flickbot continuous legit flicks, aimbot FOV circle fix + instant lock, menu no longer blocks combat, stability fixes."
+  "notes": "v3.82 - Curved humanized aim paths (aimbot/flickbot/colorbot), legit box fix, colorbot locks any player, draw FOV off by default."
 }
