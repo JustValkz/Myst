@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.83",
+  "version": "3.84",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.83 - Key remembered until PC restart, true silent aim on click, flickbot hold chains without stutter."
+  "notes": "v3.84 - Colorbot continuous curved trace with deeper body aim and random spot switching."
 }
