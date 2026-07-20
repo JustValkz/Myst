@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.79",
+  "version": "3.80",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.79 - HWID-only license auth (Roblox account switches no longer affect keys), improved HWID lock messages, Discord /resethwid fix."
+  "notes": "v3.80 - Reverted wallcheck to fail-open (old working system). TB/HBE/local player wallcheck fixed."
 }
