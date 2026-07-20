@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.89",
+  "version": "3.90",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.89 - Fix box ESP rendering (foreground draw layer, overlay coordinate sync, inclusive player snapshot)."
+  "notes": "v3.90 - Restore v3.84 ESP overlay path (box draw, overlay coords, draw-work gates). Keeps v3.86-87 crash/check fixes."
 }
