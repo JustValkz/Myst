@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.87",
+  "version": "3.88",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.87 - Unified combat wallcheck (head origin + peek grace), rate-limited reinit, crash stability."
+  "notes": "v3.88 - Fix ESP and combat FOV overlay drawing when attached (overlay visibility, visualengine refresh, game rect sync)."
 }
