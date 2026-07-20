@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.80",
+  "version": "3.81",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.80 - Reverted wallcheck to fail-open (old working system). TB/HBE/local player wallcheck fixed."
+  "notes": "v3.81 - Flickbot continuous legit flicks, aimbot FOV circle fix + instant lock, menu no longer blocks combat, stability fixes."
 }
