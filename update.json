@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.82",
+  "version": "3.83",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.82 - Curved humanized aim paths (aimbot/flickbot/colorbot), legit box fix, colorbot locks any player, draw FOV off by default."
+  "notes": "v3.83 - Key remembered until PC restart, true silent aim on click, flickbot hold chains without stutter."
 }
