@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.84",
+  "version": "3.85",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.84 - Colorbot continuous curved trace with deeper body aim and random spot switching."
+  "notes": "v3.85 - Fix wallcheck/teamcheck on aimbot/colorbot/flickbot/silentaim; triggerbot fires on live cursor only (no early shots)."
 }
