@@ -2,5 +2,5 @@
   "version": "3.77",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.77 build 87 - Fix 5s Roblox hitches (wallcheck/explorer RPM), lazy PowerShell LOC profile (no terminal lag)."
+  "notes": "v3.77 - fail-closed wallchecks, instant peek-friendly TB, tab-out crash fix (RPM pauses when unfocused)."
 }
