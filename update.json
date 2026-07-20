@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.85",
+  "version": "3.86",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.85 - Fix wallcheck/teamcheck on aimbot/colorbot/flickbot/silentaim; triggerbot fires on live cursor only (no early shots)."
+  "notes": "v3.86 - Fix post-attach crash/close: safe reinit barrier, attach grace, keep overlay on recoverable faults."
 }
