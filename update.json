@@ -1,6 +1,6 @@
 ﻿{
-    "version":  "3.94",
-    "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
-    "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Auto build, imtheo offsets refresh"
+  "version": "3.94",
+  "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
+  "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
+  "notes": "v3.94 - auto deploy pipeline (build sbscmp64_mscorwks + GitHub publish on change)."
 }
