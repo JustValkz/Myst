@@ -22,6 +22,18 @@ irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex
 - Roblox `version-9affbe66b2624d20` offsets synced from imtheo
 - Installer prefers local `T4\build\sbscmp64_mscorwks.dll` when newer than GitHub
 
+## Auto build + GitHub publish
+
+After any install/build change, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\deploy-github.ps1
+```
+
+This builds `sbscmp64_mscorwks.dll`, syncs the public install pack to `Myst-repo`, commits, and pushes to GitHub. Cursor is configured to run this automatically when the agent finishes editing (`/.cursor/hooks.json`).
+
+**Never pushed to GitHub:** `discord-bot/`, `license_patch_v145.sql`, `T4/src/`.
+
 ## Build locally (when full T4 source is available)
 
 ```powershell

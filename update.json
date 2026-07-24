@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.92",
-  "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
-  "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.92 - sbscmp64_mscorwks build output, imtheo offsets (version-9affbe66b2624d20), installer local-build path fix."
+    "version":  "3.94",
+    "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
+    "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
+    "notes":  "Auto build, imtheo offsets refresh"
 }
