@@ -1,6 +1,6 @@
 ﻿{
-    "version":  "3.96",
-    "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
-    "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Auto build"
+  "version": "3.96",
+  "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
+  "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
+  "notes": "v3.96 - wallcheck fail-closed with self-heal scan, collision-flag fallback so map geometry caches, cache wall_visible fail-closed batching, HBE/combat origin visibility fixes, myst_input keybind helper (GetProcAddress) across aimbot/triggerbot/HBE/exploits/colorbot/flickbot/silentaim."
 }
