@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.96",
+  "version": "3.97",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.96 - wallcheck fail-closed with self-heal scan, collision-flag fallback so map geometry caches, cache wall_visible fail-closed batching, HBE/combat origin visibility fixes, myst_input keybind helper (GetProcAddress) across aimbot/triggerbot/HBE/exploits/colorbot/flickbot/silentaim."
+  "notes": "v3.97 - full T4 source rebuild (T4.vcxproj + T4.sln restored), wallcheck fail-closed + self-heal, cache wall_visible batching, HBE/combat visibility fixes, myst_input keybind helper across combat modules, loader/auth/render pipeline restored from partial source."
 }
