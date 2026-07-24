@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.90",
+  "version": "3.91",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.90 - Restore v3.84 ESP overlay path (box draw, overlay coords, draw-work gates). Keeps v3.86-87 crash/check fixes."
+  "notes": "v3.91 - Roblox version-9affbe66b2624d20 offsets (imtheo), restored install pack + license bot wiring, Supabase v1.4.5 patch."
 }
