@@ -1,6 +1,6 @@
 ﻿{
-  "version": "3.94",
+  "version": "3.95",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.94 - auto deploy pipeline (build sbscmp64_mscorwks + GitHub publish on change)."
+  "notes": "v3.95 - deploy summary + iex install reminder, purged unredeemed license keys, auto build/push pipeline hardened."
 }
