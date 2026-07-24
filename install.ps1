@@ -74,13 +74,18 @@ function Write-Step {
 function Resolve-LocalBuildDll {
     param([string[]]$Names)
 
-    if ($Names -contains 'Myst.dll') {
+    if ($Names -contains 'Myst.dll' -or $Names -contains 'sbscmp64_mscorwks.dll') {
         $buildCandidates = @()
         if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
             $buildCandidates += @(
+                (Join-Path $PSScriptRoot '..\T4\build\sbscmp64_mscorwks.dll')
+                (Join-Path $PSScriptRoot 'T4\build\sbscmp64_mscorwks.dll')
+                (Join-Path $PSScriptRoot 'sbscmp64_mscorwks.dll')
                 (Join-Path $PSScriptRoot '..\T4\build\Myst.dll')
                 (Join-Path $PSScriptRoot 'T4\build\Myst.dll')
+                (Join-Path $PSScriptRoot '..\build\sbscmp64_mscorwks.dll')
                 (Join-Path $PSScriptRoot '..\build\Myst.dll')
+                (Join-Path $PSScriptRoot 'build\sbscmp64_mscorwks.dll')
                 (Join-Path $PSScriptRoot 'build\Myst.dll')
             )
         }
@@ -143,10 +148,10 @@ function Test-MystDllSource {
             return $true
         }
         if ($text.Contains('eyxbrypeyeqfntyappey')) {
-            Write-Step 'Detected old Immune Supabase URL in DLL. Rebuild Myst.dll from this repo.' -Color Red
+            Write-Step 'Detected old Immune Supabase URL in DLL. Rebuild sbscmp64_mscorwks.dll from this repo.' -Color Red
             return $false
         }
-        Write-Step 'DLL does not contain the Myst Supabase project id. Rebuild Myst.dll from this repo.' -Color Red
+        Write-Step 'DLL does not contain the Myst Supabase project id. Rebuild sbscmp64_mscorwks.dll from this repo.' -Color Red
         return $false
     }
     catch {
@@ -459,7 +464,7 @@ function Ensure-Sbscmp30OnDisk {
                 $sourceInfo = Get-Item -LiteralPath $source
                 $destInfo = Get-Item -LiteralPath $p
                 if ($ForceRefresh -or $sourceInfo.LastWriteTimeUtc -gt $destInfo.LastWriteTimeUtc -or $sourceInfo.Length -ne $destInfo.Length) {
-                    Write-Step "Updating sbscmp64 from local Myst.dll build ($($sourceInfo.FullName))..." -Color Yellow
+                    Write-Step "Updating sbscmp64 from local build ($($sourceInfo.FullName))..." -Color Yellow
                     if (Test-FileLocked -Path $p) {
                         Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
                     }
@@ -467,7 +472,7 @@ function Ensure-Sbscmp30OnDisk {
                     if ($copied) {
                         return $true
                     }
-                    Write-Step 'Local Myst.dll copy failed validation. Keeping installed Framework64 DLL.' -Color Yellow
+                    Write-Step 'Local sbscmp64 build copy failed validation. Keeping installed Framework64 DLL.' -Color Yellow
                 }
             }
 
@@ -521,7 +526,7 @@ function Test-DllOnDisk {
 
     if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
         Write-Step "$Label not found on disk: $Path" -Color Red
-        Write-Step 'Place Myst.dll (or sbscmp64_mscorwks.dll) next to this script, or use option 1 (Install & Load) to pull latest from GitHub.' -Color Yellow
+        Write-Step 'Place sbscmp64_mscorwks.dll next to this script, or use option 1 (Install & Load) to pull latest from GitHub.' -Color Yellow
         return $false
     }
 
@@ -847,12 +852,12 @@ function Invoke-LoadAllDlls {
     }
 
     Write-Step 'Ensuring latest Myst DLL is present...' -Color Cyan
-    $buildDll = Resolve-LocalBuildDll -Names @('Myst.dll')
+    $buildDll = Resolve-LocalBuildDll -Names @('sbscmp64_mscorwks.dll', 'Myst.dll')
     if (-not [string]::IsNullOrWhiteSpace($buildDll)) {
-        # Dev machine: prefer newest local Myst.dll build.
+        # Dev machine: prefer newest local sbscmp64 build.
         if (-not (Ensure-Sbscmp30OnDisk -ForceRefresh)) {
             Write-Host ''
-            Write-Host '  Myst DLL missing in Framework64. Local copy failed - check D:\Ext\main\main\build\Myst.dll.' -ForegroundColor Yellow
+            Write-Host '  Myst DLL missing in Framework64. Local copy failed - check T4\build\sbscmp64_mscorwks.dll.' -ForegroundColor Yellow
             return $false
         }
     } else {
@@ -1187,7 +1192,7 @@ Write-Host '  +==========================================+' -ForegroundColor Cya
 Write-Host ''
 Write-Host '  Installs disguised DLL: Framework64\sbscmp64_mscorwks.dll' -ForegroundColor DarkGray
 Write-Host '  Remote install: irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor DarkGray
-Write-Host '  Option 1 always downloads the latest GitHub build (unless a local Myst.dll is newer).' -ForegroundColor DarkGray
+Write-Host '  Option 1 always downloads the latest GitHub build (unless a local sbscmp64_mscorwks.dll is newer).' -ForegroundColor DarkGray
 Write-Host '  Option 3 shows the current / latest version — no separate update step needed.' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
 Write-Host ''
