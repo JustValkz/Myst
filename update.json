@@ -1,5 +1,5 @@
 ﻿{
-    "version":  "3.128",
+    "version":  "3.129",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
     "notes":  "Auto build, new sbscmp64_mscorwks.dll"
