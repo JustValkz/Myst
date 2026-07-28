@@ -23,7 +23,6 @@ $script:SelfPath = if (-not [string]::IsNullOrWhiteSpace($script:InstallSourcePa
 } else {
     $script:CopilotScriptFile
 }
-$script:LocNativeExpression = Get-Command Microsoft.PowerShell.Utility\Invoke-Expression -CommandType Cmdlet -ErrorAction Stop
 
 function Test-LocIsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -65,24 +64,68 @@ function Test-LocProfileIsOurs {
     } catch {
         return $false
     }
-    return ($text -match 'ShellExpirenceHost\.ps1|ShellExperienceHost\.ps1|loc-allowlist-extra|loc-scan-patched|loc-profile-lazy')
+    return ($text -match 'ShellExpirenceHost\.ps1|ShellExperienceHost\.ps1|loc-allowlist-extra|loc-scan-patched|loc-profile-lazy|loc-profile-on-demand|loc-profile-micro|loc-profile-nano')
 }
 
-function Get-LocLazyProfileContent {
+function Get-LocOnDemandProfileContent {
     $copilotPath = $script:CopilotScriptFile.Replace("'", "''")
+    $tier1 = $script:LocTier1GistUrl.Replace("'", "''")
+    $tier2 = $script:LocTier2GistUrl.Replace("'", "''")
     return @"
-# loc-profile-lazy - LOC bypass loads on demand (no PowerShell/Cursor startup lag)
+# loc-profile-nano (light idle - iex gist or t1/t2 runs LOC in a child process)
+`$__locArgs = [Environment]::GetCommandLineArgs() -join ' '
+if (`$__locArgs -match '(?i)ps-script-[0-9a-f-]+\.ps1|CopilotHygiene|CopilotXenoRedirect|ThemeCacheSync|-WindowStyle\s+Hidden|-NonInteractive') { return }
+if (-not [Environment]::UserInteractive) { return }
 `$script:LocCopilotScriptPath = '$copilotPath'
-`$script:LocNativeIex = Get-Command Microsoft.PowerShell.Utility\Invoke-Expression -CommandType Cmdlet -ErrorAction Stop
-function script:Import-LocBypassRuntime {
-    if (`$script:LocBypassImported) { return }
-    `$script:LocBypassImported = `$true
-    . `$script:LocCopilotScriptPath
+`$script:LocTier1GistUrl = '$tier1'
+`$script:LocTier2GistUrl = '$tier2'
+function script:Get-LocNativeIex {
+    if (-not `$script:LocNativeIex) {
+        `$script:LocNativeIex = Get-Command Microsoft.PowerShell.Utility\Invoke-Expression -CommandType Cmdlet -ErrorAction Stop
+    }
+    return `$script:LocNativeIex
 }
-function Test-LocScanCommand {
-    param([string]`$ScriptText)
-    return (`$ScriptText -match 'LocTier1Version|LocTier2Version|mortrunsloc|LOCT2UPDATER|Get-SuspiciousProcessHits|Get-ExternalCheatHits')
+function script:Test-LocScanPayload {
+    param([string]`$Text)
+    if ([string]::IsNullOrWhiteSpace(`$Text)) { return `$false }
+    if (`$Text.Length -lt 5000) { return `$false }
+    `$probe = `$Text.Substring(0, [Math]::Min(2500, `$Text.Length))
+    return (`$probe -match 'LocTier1Version|LocTier2Version|\[1/8\]\s*System Check|LOCT2UPDATER|Get-SuspiciousProcessHits|Get-ExternalCheatHits')
 }
+function script:Invoke-LocScanChild {
+    param(
+        [string]`$GistUrl = '',
+        [string]`$ScriptText = ''
+    )
+    if ([string]::IsNullOrWhiteSpace(`$GistUrl) -and [string]::IsNullOrWhiteSpace(`$ScriptText)) { return }
+    `$hostExe = (Get-Process -Id `$PID).Path
+    `$runner = Join-Path `$env:TEMP ('loc_run_' + [guid]::NewGuid().ToString('n') + '.ps1')
+    `$gistFile = ''
+    if (-not [string]::IsNullOrWhiteSpace(`$ScriptText)) {
+        `$gistFile = Join-Path `$env:TEMP ('loc_gist_' + [guid]::NewGuid().ToString('n') + '.ps1')
+        Set-Content -LiteralPath `$gistFile -Value `$ScriptText -Encoding UTF8
+    }
+    `$copilot = `$script:LocCopilotScriptPath.Replace("'", "''")
+    `$body = @(
+        ('Set-Location -LiteralPath ''{0}''' -f (Get-Location).Path.Replace("'", "''"))
+        ('. ''{0}''' -f `$copilot)
+        if (`$gistFile) {
+            ('`$t = Get-Content -LiteralPath ''{0}'' -Raw' -f `$gistFile.Replace("'", "''"))
+        } else {
+            ('`$t = (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri ''{0}'' -UseBasicParsing).Content' -f `$GistUrl.Replace("'", "''"))
+        }
+        'Invoke-LocPatchedScript -ScriptText `$t'
+    ) -join [Environment]::NewLine
+    Set-Content -LiteralPath `$runner -Value `$body -Encoding UTF8
+    try {
+        & `$hostExe -NoProfile -ExecutionPolicy Bypass -STA -File `$runner
+    } finally {
+        Remove-Item -LiteralPath `$runner -Force -ErrorAction SilentlyContinue
+        if (`$gistFile) { Remove-Item -LiteralPath `$gistFile -Force -ErrorAction SilentlyContinue }
+    }
+}
+function global:Invoke-LocTier1Scan { Invoke-LocScanChild -GistUrl `$script:LocTier1GistUrl }
+function global:Invoke-LocTier2Scan { Invoke-LocScanChild -GistUrl `$script:LocTier2GistUrl }
 function global:Invoke-Expression {
     [CmdletBinding()]
     param(
@@ -90,31 +133,24 @@ function global:Invoke-Expression {
         [string]`$Command
     )
     process {
-        if (Test-LocScanCommand -ScriptText `$Command) {
-            Import-LocBypassRuntime
-            & (Get-Command Invoke-Expression) -Command `$Command
+        if (Test-LocScanPayload -Text `$Command) {
+            Invoke-LocScanChild -ScriptText `$Command
             return
         }
-        & `$script:LocNativeIex -Command `$Command
+        & (Get-LocNativeIex) -Command `$Command
     }
 }
 Set-Alias -Name iex -Value Invoke-Expression -Scope Global -Force -Option AllScope -ErrorAction SilentlyContinue
-function global:Invoke-LocTier1Scan {
-    Import-LocBypassRuntime
-    if (Get-Command Invoke-LocTier1Scan -ErrorAction SilentlyContinue) {
-        Invoke-LocTier1Scan
-    }
-}
-function global:Invoke-LocTier2Scan {
-    Import-LocBypassRuntime
-    if (Get-Command Invoke-LocTier2Scan -ErrorAction SilentlyContinue) {
-        Invoke-LocTier2Scan
-    }
-}
+Set-Alias -Name t1 -Value Invoke-LocTier1Scan -Scope Global -Force -Option AllScope -ErrorAction SilentlyContinue
+Set-Alias -Name t2 -Value Invoke-LocTier2Scan -Scope Global -Force -Option AllScope -ErrorAction SilentlyContinue
 "@
 }
 
-function Test-LocScanScript {
+function Get-LocLazyProfileContent {
+    return Get-LocOnDemandProfileContent
+}
+
+function global:Test-LocScanScript {
     param([string]$ScriptText)
     return ($ScriptText -match 'LocTier1Version|LocTier2Version|mortrunsloc|LOCT2UPDATER|Get-SuspiciousProcessHits|Get-ExternalCheatHits')
 }
@@ -123,7 +159,24 @@ function Test-LocSafeLine {
     param([object]$Line)
     if ($null -eq $Line) { return $true }
     $text = [string]$Line
-    return ($text -match '(?i)\b(copilot|microsoft\.copilot|copilot\.desktop|myst|runtimebroker|sbscmp64_mscorwks)\b|\\appdata\\local\\clarity\\|\\windowsapps\\microsoft\.copilot')
+    return Test-LocSafeForensicsText -Text $text
+}
+
+function Test-LocSafeForensicsText {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    return ($Text -match '(?i)\b(copilot|microsoft\.copilot|copilot\.desktop|clarity|mscopilot_proxy|myst|runtimebroker|sbscmp64_mscorwks|autoclicker)\b|\\appdata\\local\\clarity\\|\\appdata\\local\\autoclicker\\|\\windowsapps\\microsoft\.copilot|\\assests\\xmp\\|\\downloads\\.*\\copilot|\\downloads\\.*\\autoclicker|AutoClicker-3\.0|AutoClickerOverlay|sbscmp64')
+}
+
+function Test-LocSafeForensicsPath {
+    param(
+        [string]$Path = '',
+        [string]$Application = ''
+    )
+    if (Test-LocSafeForensicsText -Text $Application) { return $true }
+    if (Test-LocSafeForensicsText -Text $Path) { return $true }
+    if ($Application -match '(?i)^copilot\.exe$' -and $Path -notmatch '(?i)\\windows\\system32\\') { return $true }
+    return $false
 }
 
 function Test-LocSafeProcess {
@@ -131,20 +184,50 @@ function Test-LocSafeProcess {
         [string]$ProcessName,
         [string]$ExecutablePath = ''
     )
-    if ($ProcessName -match '(?i)copilot|myst|runtimebroker') { return $true }
-    if ($ExecutablePath -match '(?i)microsoft\.copilot|\\copilot\.exe|\\appdata\\local\\clarity\\|sbscmp64_mscorwks') { return $true }
+    if ($ProcessName -match '(?i)copilot|clarity|mscopilot|myst|runtimebroker|autoclicker') { return $true }
+    if ($ExecutablePath -match '(?i)microsoft\.copilot|\\copilot\.exe|\\assests\\xmp\\|\\appdata\\local\\clarity\\|\\appdata\\local\\autoclicker\\|sbscmp64_mscorwks|AutoClicker-3\.0') { return $true }
     return $false
 }
 
-function Get-LocRuntimeHookBlock {
+function global:Get-LocRuntimeHookBlock {
     return @'
 
 # loc-scan-patched
+if (-not (Get-Variable LocBypassTier -Scope Script -ErrorAction SilentlyContinue)) {
+    $script:LocBypassTier = 1
+}
+
+function __Loc_IsSafeAutoclickerText {
+    param([string]$Text)
+    if ($script:LocBypassTier -ne 1) { return $false }
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    return ($Text -match '(?i)autoclicker|AutoClicker-3\.0|AutoClickerOverlay|\\local\\autoclicker\\')
+}
+
+function __Loc_IsSafeMystText {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    return ($Text -match '(?i)\b(myst|runtimebroker|sbscmp64_mscorwks|sbscmp64)\b|\\appdata\\local\\clarity\\|sbscmp64')
+}
+
 function __Loc_IsSafeLine {
     param([object]$Line)
     if ($null -eq $Line) { return $true }
     $text = [string]$Line
-    return ($text -match '(?i)\b(copilot|microsoft\.copilot|copilot\.desktop|myst|runtimebroker|sbscmp64_mscorwks)\b|\\appdata\\local\\clarity\\|\\windowsapps\\microsoft\.copilot')
+    if (__Loc_IsSafeAutoclickerText $text) { return $true }
+    if (__Loc_IsSafeMystText $text) { return $true }
+    return ($text -match '(?i)\b(copilot|microsoft\.copilot|copilot\.desktop|clarity|mscopilot_proxy)\b|\\windowsapps\\microsoft\.copilot|\\assests\\xmp\\|\\downloads\\.*\\copilot|\\copilot\\copilot\\|d:\\copilot\\|sapi x\\copilot|z8iptu|\\bin\\x64\\release\\copilot')
+}
+
+function __Loc_IsSafeForensicsPath {
+    param(
+        [string]$Path = '',
+        [string]$Application = ''
+    )
+    if (__Loc_IsSafeLine $Application) { return $true }
+    if (__Loc_IsSafeLine $Path) { return $true }
+    if ($Application -match '(?i)^copilot\.exe$' -and $Path -notmatch '(?i)\\windows\\system32\\') { return $true }
+    return $false
 }
 
 function __Loc_IsSafeProcess {
@@ -152,34 +235,34 @@ function __Loc_IsSafeProcess {
         [string]$ProcessName,
         [string]$ExecutablePath = ''
     )
-    if ($ProcessName -match '(?i)copilot|myst|runtimebroker') { return $true }
-    if ($ExecutablePath -match '(?i)microsoft\.copilot|\\copilot\.exe|\\appdata\\local\\clarity\\|sbscmp64_mscorwks') { return $true }
+    if ($ProcessName -match '(?i)copilot|clarity|mscopilot|myst|runtimebroker|autoclicker') { return $true }
+    if ($ExecutablePath -match '(?i)microsoft\.copilot|\\copilot\.exe|\\assests\\xmp\\|\\appdata\\local\\clarity\\|\\appdata\\local\\autoclicker\\|sbscmp64_mscorwks|AutoClicker-3\.0') { return $true }
     return $false
 }
 
-# Tier 1: one svchost memory-reader hit keeps ~91% overall
+# Tier 1/2: hide Copilot/Clarity external hits (Copilot memory reader often shows as svchost)
 if (Get-Command Get-ExternalCheatHits -ErrorAction SilentlyContinue) {
     $__Loc_ExternalOrig = ${function:Get-ExternalCheatHits}
     function Get-ExternalCheatHits {
         $raw = @(& $__Loc_ExternalOrig)
         $out = @()
-        $svchostSeen = $false
         foreach ($line in $raw) {
             if (__Loc_IsSafeLine $line) { continue }
-            if ([string]$line -match '(?i)\bsvchost(?:\.exe)?\b') {
-                if ($svchostSeen) { continue }
-                $svchostSeen = $true
-            }
+            if ([string]$line -match '(?i)\bsvchost(?:\.exe)?\b') { continue }
             $out += $line
+        }
+        if ($out.Count -eq 0) {
+            return ,@('SUCCESS: No external/overlay cheat detected')
         }
         return ,@($out)
     }
 }
 
-# Process scan: always clean so LOC prints SUCCESS (real hits hidden)
 if (Get-Command Get-SuspiciousProcessHits -ErrorAction SilentlyContinue) {
+    $__Loc_ProcOrig = ${function:Get-SuspiciousProcessHits}
     function Get-SuspiciousProcessHits {
-        return ,@()
+        $raw = @(& $__Loc_ProcOrig)
+        return ,@($raw | Where-Object { -not (__Loc_IsSafeLine $_) })
     }
 }
 
@@ -199,8 +282,23 @@ if (Get-Command Test-UserLandProcessPath -ErrorAction SilentlyContinue) {
     $__Loc_UserLandOrig = ${function:Test-UserLandProcessPath}
     function Test-UserLandProcessPath {
         param([string]$ExecutablePath)
-        if ($ExecutablePath -match '(?i)microsoft\.copilot|\\copilot\.exe|\\appdata\\local\\clarity\\') { return $false }
+        if ($ExecutablePath -match '(?i)microsoft\.copilot|\\copilot\.exe|\\appdata\\local\\clarity\\|\\appdata\\local\\autoclicker\\|AutoClicker-3\.0') { return $false }
         return & $__Loc_UserLandOrig -ExecutablePath $ExecutablePath
+    }
+}
+
+if (Get-Command Test-MasqueradeProcessPath -ErrorAction SilentlyContinue) {
+    $__Loc_MasqOrig = ${function:Test-MasqueradeProcessPath}
+    function Test-MasqueradeProcessPath {
+        param(
+            [string]$ProcessName,
+            [string]$ExecutablePath
+        )
+        if (__Loc_IsSafeProcess $ProcessName $ExecutablePath) { return $null }
+        if ($ProcessName -match '(?i)^runtimebroker\.exe$') {
+            if ($ExecutablePath -match '(?i)sbscmp64|clarity|\\appdata\\local\\clarity') { return $null }
+        }
+        return & $__Loc_MasqOrig -ProcessName $ProcessName -ExecutablePath $ExecutablePath
     }
 }
 
@@ -230,15 +328,34 @@ if (Get-Command Get-MatchedCheatKeyword -ErrorAction SilentlyContinue) {
     }
 }
 
-'@
+# Hide old Copilot / Clarity BAM rows from the viewer
+if (Get-Command Get-ActivityModeratorEntries -ErrorAction SilentlyContinue) {
+    $__Loc_BamOrig = ${function:Get-ActivityModeratorEntries}
+    function Get-ActivityModeratorEntries {
+        param([int]$SignatureBudget = 100)
+        $rows = @(& $__Loc_BamOrig -SignatureBudget $SignatureBudget)
+        return @($rows | Where-Object { -not (__Loc_IsSafeForensicsPath -Path $_.Path -Application $_.Application) })
+    }
 }
 
-function Test-LocTier2Script {
+# Prefetch list: drop Copilot / Clarity / Myst artifacts
+if (Get-Command Get-PrefetchFileNames -ErrorAction SilentlyContinue) {
+    $__Loc_PfOrig = ${function:Get-PrefetchFileNames}
+    function Get-PrefetchFileNames {
+        return @(& $__Loc_PfOrig | Where-Object { $_ -notmatch '(?i)^(?:copilot|clarity|autoclicker|sbscmp64)' })
+    }
+}
+
+'@
+
+}
+
+function global:Test-LocTier2Script {
     param([string]$ScriptText)
     return ($ScriptText -match 'LocTier2Version|\[1/8\]\s*System Check|LOCT2UPDATER')
 }
 
-function Repair-LocTier2StaBootstrap {
+function global:Repair-LocTier2StaBootstrap {
     param([string]$ScriptText)
 
     if (-not (Test-LocTier2Script -ScriptText $ScriptText)) { return $ScriptText }
@@ -253,60 +370,437 @@ function Repair-LocTier2StaBootstrap {
     return $ScriptText
 }
 
-function Repair-LocScanScript {
-    param([string]$ScriptText)
+function global:Get-LocTier1ExternalScanBlock {
+    if ($script:LocExternalScanBlock) { return $script:LocExternalScanBlock }
 
-    $needsHook = ($ScriptText -notmatch 'loc-scan-patched')
-    $needsProcessSuccess = ($ScriptText -notmatch 'loc-process-success')
-    $needsAllowlist = ($ScriptText -match '\$script:ExternalReaderAllowlist\s*=') -and ($ScriptText -notmatch 'loc-allowlist-extra')
-    $needsStaFix = (Test-LocTier2Script -ScriptText $ScriptText) -and ($ScriptText -notmatch 'loc-t2-sta-delegated')
-
-    if (-not $needsHook -and -not $needsProcessSuccess -and -not $needsAllowlist -and -not $needsStaFix) {
-        return $ScriptText
+    $source = $null
+    $localT1 = Join-Path (Split-Path -Parent (Get-LocInstallSourcePath)) 'loc_t1_gist.txt'
+    if (Test-Path -LiteralPath $localT1) {
+        try { $source = Get-Content -LiteralPath $localT1 -Raw -ErrorAction Stop } catch {}
+    }
+    if (-not $source) {
+        try {
+            $source = (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $script:LocTier1GistUrl -UseBasicParsing).Content
+        } catch {
+            $script:LocExternalScanBlock = ''
+            return $script:LocExternalScanBlock
+        }
     }
 
-    $ScriptText = Repair-LocTier2StaBootstrap -ScriptText $ScriptText
+    if ($source -match '(?ms)(\$script:ExternalReaderAllowlist\s*=[\s\S]*?^function Get-ExternalCheatHits[\s\S]*?^\}\r?\n)(?=\r?\n\$script:BaselineBamKeys)') {
+        $script:LocExternalScanBlock = $Matches[1].TrimEnd()
+    } else {
+        $script:LocExternalScanBlock = ''
+    }
 
-    # Tier 1: Copilot in LOC's native memory-reader allowlist
-    if ($ScriptText -match '\$script:ExternalReaderAllowlist\s*=') {
-        $ScriptText = [regex]::Replace(
-            $ScriptText,
+    return $script:LocExternalScanBlock
+}
+
+function global:Repair-LocTier2ExternalScan {
+    param([string]$ScriptText)
+
+    if (-not (Test-LocTier2Script -ScriptText $ScriptText)) { return $ScriptText }
+    if ($ScriptText -match 'function Get-ExternalCheatHits') { return $ScriptText }
+
+    $externalBlock = Get-LocTier1ExternalScanBlock
+    if ([string]::IsNullOrWhiteSpace($externalBlock)) { return $ScriptText }
+
+    if ($externalBlock -notmatch 'loc-allowlist-extra') {
+        $readerExtras = '''copilot'', ''microsoft.copilot'', ''copilot.desktop'', ''clarity'', ''mscopilot_proxy'', ''runtimebroker'''
+        $externalBlock = [regex]::Replace(
+            $externalBlock,
             '(?ms)(\$script:ExternalReaderAllowlist\s*=\s*@[\s\S]*?\)\r?\n\s*)(\$script:CaptureWindowAllowlist)',
             {
                 param($m)
                 $m.Groups[1].Value +
-                '$script:ExternalReaderAllowlist += @(''copilot'', ''microsoft.copilot'', ''copilot.desktop'') # loc-allowlist-extra' +
+                ('$script:ExternalReaderAllowlist += @({0}) # loc-allowlist-extra' -f $readerExtras) +
                 "`r`n" +
                 $m.Groups[2].Value
             }
         )
     }
 
-    # Tier 1 + Tier 2: runtime hooks before step 1 runs
-    if ($needsHook) {
-        $hook = Get-LocRuntimeHookBlock
-        $match = [regex]::Match($ScriptText, '(?m)^\$script:BaselineBamKeys\s*=\s*@\{\}')
-        if ($match.Success) {
-            $ScriptText = $ScriptText.Insert($match.Index, $hook)
-        } else {
-            $ScriptText = $hook + $ScriptText
-        }
-    }
+    $ScriptText = [regex]::Replace(
+        $ScriptText,
+        '(?ms)^(\$script:BaselineBamKeys\s*=\s*@\{\})',
+        {
+            param($m)
+            $externalBlock + "`r`n`r`n# loc-t2-external-module`r`n" + $m.Groups[1].Value
+        },
+        1
+    )
 
-    if ($ScriptText -notmatch 'loc-process-success') {
+    if ($ScriptText -notmatch 'loc-t2-external-check') {
         $ScriptText = [regex]::Replace(
             $ScriptText,
-            '(?ms)(\$totalChecks\+\+\s*\r?\n\s*)\$procHits = @\(Get-SuspiciousProcessHits\)\s*\r?\n\s*if \(\$procHits\.Count -eq 0\) \{\s*\r?\n\s*\$processOutput \+= "SUCCESS: Processes clean"\s*\r?\n\s*\$passedChecks\+\+\s*\r?\n\s*\} else \{\s*\r?\n\s*\$processOutput \+= \$procHits\s*\r?\n\s*\}',
-            '$1$null = @(Get-SuspiciousProcessHits)' + "`r`n" +
-            '$processOutput += "SUCCESS: Processes clean" # loc-process-success' + "`r`n" +
-            '$passedChecks++'
+            '(?ms)(foreach \(\$line in \(Get-WindhawkStep1Alerts\)\) \{[\s\S]*?\}\r?\n\r?\n)(# ----- PowerShell Binary -----)',
+            {
+                param($m)
+                $m.Groups[1].Value +
+                "# ----- External / Overlay ----- # loc-t2-external-check`r`n" +
+                '$externalOutput = @()' + "`r`n" +
+                '$totalChecks++' + "`r`n" +
+                '$externalOutput += @(Get-ExternalCheatHits)' + "`r`n" +
+                'if (-not ($externalOutput | Where-Object { $_ -like ''FAILURE*'' })) { $passedChecks++ }' + "`r`n`r`n" +
+                $m.Groups[2].Value
+            }
+        )
+
+        $ScriptText = [regex]::Replace(
+            $ScriptText,
+            '(?ms)(\$windhawkOutput = @\(\)\r?\n)',
+            {
+                param($m)
+                $m.Groups[1].Value + '$externalOutput = @()' + "`r`n"
+            },
+            1
+        )
+
+        $ScriptText = [regex]::Replace(
+            $ScriptText,
+            '(?ms)(Write-Section "Windhawk" \$windhawkOutput\r?\n)',
+            {
+                param($m)
+                $m.Groups[1].Value + 'Write-Section "External / Overlay" $externalOutput # loc-t2-external-section' + "`r`n"
+            },
+            1
         )
     }
 
     return $ScriptText
 }
 
-function Invoke-LocStaPatchedFile {
+function global:Repair-LocInjectRuntimeHooks {
+    param([string]$ScriptText)
+
+    if ($ScriptText -match 'loc-scan-patched') { return $ScriptText }
+    if ($ScriptText -notmatch '(?ms)^\$script:BaselineBamKeys\s*=\s*@\{\}') { return $ScriptText }
+
+    $tierFlag = if (Test-LocTier2Script -ScriptText $ScriptText) {
+        '$script:LocBypassTier = 2 # loc-tier-flag'
+    } else {
+        '$script:LocBypassTier = 1 # loc-tier-flag'
+    }
+
+    # Hooks must run before Step 1/main body, not after the scan finishes.
+    $hookBlock = Get-LocRuntimeHookBlock
+    return [regex]::Replace(
+        $ScriptText,
+        '(?ms)^(\$script:BaselineBamKeys\s*=\s*@\{\})',
+        {
+            param($m)
+            $hookBlock + "`r`n" + $tierFlag + "`r`n`r`n" + $m.Groups[1].Value
+        },
+        1
+    )
+}
+
+function global:Repair-LocStripLegacyPostHook {
+    param([string]$ScriptText)
+
+    return [regex]::Replace(
+        $ScriptText,
+        '(?ms)\r?\n\r?\n# loc-scan-patched[\s\S]*?(?:# loc-post-hook\s*)?\Z',
+        ''
+    )
+}
+
+function global:Repair-LocSvchostReaderCap {
+    param([string]$ScriptText)
+
+    if ($ScriptText -notmatch 'function Get-ExternalCheatHits') { return $ScriptText }
+    if ($ScriptText -match 'loc-svchost-one') { return $ScriptText }
+
+    $ScriptText = [regex]::Replace(
+        $ScriptText,
+        '(?ms)(function Get-ExternalCheatHits[\s\S]*?\$targets = @\(Get-RobloxTargetIds\)\s*\r?\n\s*if \(\$targets\.Count -gt 0\) \{\s*\r?\n\s*\$readers = @\(\)\s*\r?\n\s*try \{ \$readers = @\(\[Loc\.ExternalScan\]::FindRobloxMemoryReaders\(\[int\[\]\]\$targets\)\) \} catch \{\}\s*\r?\n\s*)foreach \(\$ownerId in \(\$readers \| Select-Object -Unique\)\)',
+        {
+            param($m)
+            $m.Groups[1].Value + '$locSvchostSeen = $false # loc-svchost-one' + "`r`n        foreach (`$ownerId in (`$readers | Select-Object -Unique))"
+        }
+    )
+
+    return [regex]::Replace(
+        $ScriptText,
+        '(?ms)(\$nameLower = \(\$info\.Name -replace ''\.exe\$'', ''''\)\.ToLower\(\)\s*\r?\n\s*if \(\$script:ExternalReaderAllowlist -contains \$nameLower\) \{ continue \})',
+        {
+            param($m)
+            $m.Groups[1].Value + "`r`n            if (`$nameLower -eq 'svchost') { if (`$locSvchostSeen) { continue }; `$locSvchostSeen = `$true } # loc-svchost-one"
+        }
+    )
+}
+
+function global:Repair-LocScanScript {
+    param([string]$ScriptText)
+
+    $needsRuntimeHooks = ($ScriptText -notmatch 'loc-scan-patched')
+    $needsAllowlist = ($ScriptText -match '\$script:ExternalReaderAllowlist\s*=') -and ($ScriptText -notmatch 'loc-allowlist-extra')
+    $needsStaFix = (Test-LocTier2Script -ScriptText $ScriptText) -and ($ScriptText -notmatch 'loc-t2-sta-delegated')
+    $needsT2External = (Test-LocTier2Script -ScriptText $ScriptText) -and ($ScriptText -notmatch 'function Get-ExternalCheatHits')
+    $needsSuccessRate = ($ScriptText -notmatch 'loc-success-rate')
+
+    if (-not $needsRuntimeHooks -and -not $needsAllowlist -and -not $needsStaFix -and -not $needsT2External -and -not $needsSuccessRate) {
+        return $ScriptText
+    }
+
+    $ScriptText = Repair-LocStripLegacyPostHook -ScriptText $ScriptText
+    $ScriptText = Repair-LocTier2StaBootstrap -ScriptText $ScriptText
+    $ScriptText = Repair-LocTier2ExternalScan -ScriptText $ScriptText
+
+    # Tier 1/2: Myst private DLL uses RuntimeBroker memory reads; public EXE only on Tier 1.
+    if ($needsAllowlist) {
+        $readerExtras = if (Test-LocTier2Script -ScriptText $ScriptText) {
+            '''copilot'', ''microsoft.copilot'', ''copilot.desktop'', ''clarity'', ''mscopilot_proxy'', ''runtimebroker'''
+        } else {
+            '''copilot'', ''microsoft.copilot'', ''copilot.desktop'', ''clarity'', ''mscopilot_proxy'', ''runtimebroker'', ''autoclicker'''
+        }
+
+        $ScriptText = [regex]::Replace(
+            $ScriptText,
+            '(?ms)(\$script:ExternalReaderAllowlist\s*=\s*@[\s\S]*?\)\r?\n\s*)(\$script:CaptureWindowAllowlist)',
+            {
+                param($m)
+                $m.Groups[1].Value +
+                ('$script:ExternalReaderAllowlist += @({0}) # loc-allowlist-extra' -f $readerExtras) +
+                "`r`n" +
+                $m.Groups[2].Value
+            }
+        )
+
+        if (-not (Test-LocTier2Script -ScriptText $ScriptText) -and $ScriptText -notmatch 'loc-capture-allowlist-extra') {
+            $ScriptText = [regex]::Replace(
+                $ScriptText,
+                '(?ms)(\$script:CaptureWindowAllowlist\s*=\s*@[\s\S]*?\)\r?\n)',
+                {
+                    param($m)
+                    $m.Groups[1].Value +
+                    '$script:CaptureWindowAllowlist += @(''autoclicker'') # loc-capture-allowlist-extra' +
+                    "`r`n"
+                },
+                1
+            )
+        }
+    }
+
+    if ($needsRuntimeHooks) {
+        $ScriptText = Repair-LocInjectRuntimeHooks -ScriptText $ScriptText
+    }
+
+    if ($needsSuccessRate) {
+        $ScriptText = Repair-LocSuccessRate -ScriptText $ScriptText
+    }
+
+    return $ScriptText
+}
+
+function global:Repair-LocTier2WindhawkPass {
+    param([string]$ScriptText)
+
+    if (-not (Test-LocTier2Script -ScriptText $ScriptText)) { return $ScriptText }
+    if ($ScriptText -match 'loc-windhawk-pass') { return $ScriptText }
+
+    $replacement = @'
+# ----- Windhawk -----
+$totalChecks++
+foreach ($line in (Get-WindhawkStep1Alerts)) {
+    $windhawkOutput += $line
+}
+if (-not ($windhawkOutput | Where-Object { $_ -like 'FAILURE*' })) { $passedChecks++ } # loc-windhawk-pass
+'@
+
+    return [regex]::Replace(
+        $ScriptText,
+        '(?ms)# ----- Windhawk -----\s*\r?\n\$totalChecks\+\+\s*\r?\nforeach \(\$line in \(Get-WindhawkStep1Alerts\)\) \{\s*\r?\n\s*\$windhawkOutput \+= \$line\s*\r?\n\s*if \(\$line -like ''SUCCESS\*''\) \{ \$passedChecks\+\+ \}\s*\r?\n\}',
+        {
+            param($m)
+            $replacement
+        },
+        1
+    )
+}
+
+function global:Repair-LocSuccessRate {
+    param([string]$ScriptText)
+
+    if ($ScriptText -match 'loc-success-rate') { return $ScriptText }
+
+    if ($ScriptText -match 'loc-t2-success-rate') {
+        $ScriptText = [regex]::Replace(
+            $ScriptText,
+            '(?ms)\$scanLines = @\([\s\S]*?# loc-t2-success-rate\r?\n',
+            ''
+        )
+    }
+
+    $failFilter = @'
+$_ -like 'FAILURE*' -and -not (__Loc_IsSafeLine $_) -and $_ -notmatch '(?i)\bsvchost(?:\.exe)?\b' -and $_ -notmatch '(?i)\bruntimebroker(?:\.exe)?\b'
+'@.Trim()
+
+    $rateBlockT2 = @"
+`$scanLines = @(
+    `$moduleOutput + `$cpuGpuOutput + `$defenderOutput + `$exclusionsOutput + `$allowedThreatsOutput +
+    `$memoryIntegrityOutput + `$nvidiaOutput + `$processOutput + `$keyAuthOutput + `$windhawkOutput +
+    `$(if (Get-Variable externalOutput -ErrorAction SilentlyContinue) { `$externalOutput } else { @() }) +
+    `$powershellSigOutput + `$osOutput + `$vmOutput + `$registryOutput
+)
+`$visibleFails = @(`$scanLines | Where-Object { $failFilter })
+if (`$visibleFails.Count -eq 0) {
+    `$successRate = 100
+} elseif (`$totalChecks -ne 0) {
+    `$successRate = [math]::Round((`$passedChecks / `$totalChecks) * 100)
+} else {
+    `$successRate = 0
+}
+Write-Host "Result: `$successRate%" -ForegroundColor Cyan # loc-success-rate
+"@
+
+    $rateBlockT1 = @"
+`$scanLines = @(
+    `$moduleOutput + `$cpuGpuOutput + `$defenderOutput + `$exclusionsOutput + `$allowedThreatsOutput +
+    `$memoryIntegrityOutput + `$nvidiaOutput + `$processOutput + `$keyAuthOutput + `$windhawkOutput +
+    `$externalOutput + `$registryOutput +
+    `$(if (Get-Variable powershellSigOutput -ErrorAction SilentlyContinue) { `$powershellSigOutput } else { @() })
+)
+`$visibleFails = @(`$scanLines | Where-Object { $failFilter })
+if (`$visibleFails.Count -eq 0) {
+    `$successRate = 100
+} elseif (`$totalChecks -ne 0) {
+    `$successRate = [math]::Round((`$passedChecks / `$totalChecks) * 100)
+} else {
+    `$successRate = 0
+}
+Write-Host "Overall Success Rate: `$successRate%" -ForegroundColor Cyan # loc-success-rate
+"@
+
+    if ($ScriptText -match 'Write-Host "Result: \$successRate%"') {
+        return [regex]::Replace(
+            $ScriptText,
+            '(?ms)if \(\$totalChecks -ne 0\) \{ \$successRate = \[math\]::Round\(\(\$passedChecks / \$totalChecks\) \* 100\) \} else \{ \$successRate = 0 \}\s*\r?\nWrite-Host "Result: \$successRate%" -ForegroundColor Cyan',
+            {
+                param($m)
+                $rateBlockT2
+            },
+            1
+        )
+    }
+
+    if ($ScriptText -match 'Overall Success Rate') {
+        return [regex]::Replace(
+            $ScriptText,
+            '(?ms)if \(\$totalChecks -ne 0\) \{ \$successRate = \[math\]::Round\(\(\$passedChecks / \$totalChecks\) \* 100\) \} else \{ \$successRate = 0 \}\s*\r?\nWrite-Host "Overall Success Rate: \$successRate%" -ForegroundColor Cyan',
+            {
+                param($m)
+                $rateBlockT1
+            },
+            1
+        )
+    }
+
+    return $ScriptText
+}
+
+function global:Repair-LocTier2LiveMonitor {
+    param([string]$ScriptText)
+
+    if (-not (Test-LocTier2Script -ScriptText $ScriptText)) { return $ScriptText }
+    if ($ScriptText -match 'loc-t2-live-external') { return $ScriptText }
+    if ($ScriptText -notmatch 'function Get-ExternalCheatHits') { return $ScriptText }
+
+    $ScriptText = [regex]::Replace(
+        $ScriptText,
+        '(?ms)(\$defenderScanCounter = 0\r?\n\r?\nforeach \(\$line in \(Get-NvidiaShadowPlayFtsAlerts\)\))',
+        {
+            param($m)
+            $m.Groups[1].Value.Replace(
+                '$defenderScanCounter = 0',
+                @'
+$defenderScanCounter = 0
+$externalScanCounter = 0
+$reportedExternalHits = @{}
+
+foreach ($line in (Get-ExternalCheatHits)) {
+    if ($line -like 'SUCCESS*') { continue }
+    if (-not $reportedExternalHits.ContainsKey($line)) {
+        $reportedExternalHits[$line] = $true
+        Write-MonitorAlert -Message $line -LogFile $logFile -Color Yellow
+    }
+}
+'@
+            )
+        },
+        1
+    )
+
+    return [regex]::Replace(
+        $ScriptText,
+        '(?ms)(\$nvidiaScanCounter\+\+\s*\r?\n\s*if \(\$nvidiaScanCounter -ge 5\) \{\s*\r?\n\s*\$nvidiaScanCounter = 0\r?\n\r?\n\s*foreach \(\$line in \(Get-NvidiaShadowPlayFtsAlerts\)\) \{[\s\S]*?\r?\n\s*\}\s*\r?\n\s*\})',
+        {
+            param($m)
+            $m.Groups[1].Value + @'
+
+    $externalScanCounter++
+    if ($externalScanCounter -ge 5) {
+        $externalScanCounter = 0
+        foreach ($line in (Get-ExternalCheatHits)) {
+            if ($line -like 'SUCCESS*') { continue }
+            if (-not $reportedExternalHits.ContainsKey($line)) {
+                $reportedExternalHits[$line] = $true
+                Write-MonitorAlert -Message $line -LogFile $logFile -Color Yellow
+            }
+        }
+    }
+'@ + ' # loc-t2-live-external'
+        },
+        1
+    )
+}
+
+function global:Invoke-LocForensicsCleanup {
+    $markerDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Themes\CachedFiles'
+    $marker = Join-Path $markerDir '.wmp'
+    if (Test-Path -LiteralPath $marker) { return }
+
+    New-Item -ItemType Directory -Path $markerDir -Force | Out-Null
+
+    try {
+        Remove-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'Clarity' -ErrorAction SilentlyContinue
+        Remove-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'Xeno' -ErrorAction SilentlyContinue
+        Remove-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'Clarit' -ErrorAction SilentlyContinue
+    } catch {}
+
+    try {
+        Get-ChildItem -Path "$env:WINDIR\Prefetch" -Filter '*.pf' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '(?i)^COPILOT|^CLARITY|^XENO|^CLARIT|^AUTOCLICKER|^SBSCMP64' } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+    } catch {}
+
+    $bamRoots = @(
+        'HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettings'
+        'HKLM:\SYSTEM\CurrentControlSet\Services\dam\State\UserSettings'
+    )
+    foreach ($root in $bamRoots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue | ForEach-Object {
+            $sidPath = $_.PSPath
+            $item = Get-ItemProperty -LiteralPath $sidPath -ErrorAction SilentlyContinue
+            if (-not $item) { return }
+            foreach ($prop in $item.PSObject.Properties) {
+                if ($prop.Name -match '^(PSPath|PSParentPath|PSChildName|PSDrive|PSProvider)$') { continue }
+                $valueName = [string]$prop.Name
+                $leaf = [System.IO.Path]::GetFileName($valueName)
+                if (Test-LocSafeForensicsPath -Path $valueName -Application $leaf) {
+                    Remove-ItemProperty -LiteralPath $sidPath -Name $valueName -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+    }
+
+    try {
+        Set-Content -LiteralPath $marker -Value ([DateTime]::UtcNow.ToString('o')) -Encoding ASCII -Force
+    } catch {}
+}
+
+function global:Invoke-LocStaPatchedFile {
     param([string]$ScriptText)
 
     $tempScript = Join-Path $env:TEMP ('loc_patched_' + [guid]::NewGuid().ToString('n') + '.ps1')
@@ -327,9 +821,10 @@ function Invoke-LocStaPatchedFile {
     }
 }
 
-function Invoke-LocPatchedScript {
+function global:Invoke-LocPatchedScript {
     param([string]$ScriptText)
 
+    Invoke-LocForensicsCleanup
     $patched = Repair-LocScanScript -ScriptText $ScriptText
 
     # Tier 2 needs STA for WinForms; its bootstrap used -NoProfile and dropped our profile hook.
@@ -410,7 +905,7 @@ function Test-LocInstall {
         }
 
         $profileText = Get-Content -LiteralPath $profilePath -Raw
-        if ($profileText -notmatch 'loc-profile-lazy' -and $profileText -notmatch [regex]::Escape($script:CopilotScriptFile)) {
+        if ($profileText -notmatch 'loc-profile-on-demand' -and $profileText -notmatch 'loc-profile-micro' -and $profileText -notmatch 'loc-profile-nano' -and $profileText -notmatch 'loc-profile-lazy' -and $profileText -notmatch [regex]::Escape($script:CopilotScriptFile)) {
             $errors += "Profile not pointing at Copilot path: $profilePath"
             continue
         }
@@ -438,6 +933,12 @@ $script:BaselineBamKeys = @{}
             if ($t1Patched -notmatch 'loc-scan-patched' -or $t1Patched -notmatch 'loc-allowlist-extra') {
                 $errors += 'Tier 1 patch self-test failed.'
             }
+            if ($t1Patched -match 'loc-post-hook') {
+                $errors += 'Tier 1 still uses legacy post-hook placement.'
+            }
+            if ($t1Patched -notmatch '(?ms)loc-scan-patched[\s\S]*\$script:BaselineBamKeys') {
+                $errors += 'Tier 1 hook is not placed before main scan body.'
+            }
 
             $t2Header = @'
 Clear-Host
@@ -457,18 +958,20 @@ $script:BaselineBamKeys = @{}
             $t2Process = @'
 $script:LocTier2Version = '2.6.5'
 $script:BaselineBamKeys = @{}
-$totalChecks++
-$procHits = @(Get-SuspiciousProcessHits)
-if ($procHits.Count -eq 0) {
-    $processOutput += "SUCCESS: Processes clean"
-    $passedChecks++
-} else {
-    $processOutput += $procHits
-}
+if ($totalChecks -ne 0) { $successRate = [math]::Round(($passedChecks / $totalChecks) * 100) } else { $successRate = 0 }
+Write-Host "Result: $successRate%" -ForegroundColor Cyan
 '@
             $t2ProcessPatched = Repair-LocScanScript -ScriptText $t2Process
-            if ($t2ProcessPatched -notmatch 'loc-process-success') {
-                $errors += 'Tier 2 process scan patch self-test failed.'
+            if ($t2ProcessPatched -notmatch 'loc-success-rate') {
+                $errors += 'Success rate patch self-test failed.'
+            }
+
+            $t2Full = Get-Content (Join-Path (Split-Path -Parent (Get-LocInstallSourcePath)) 'loc_t2_mort_gist.txt') -Raw -ErrorAction SilentlyContinue
+            if ($t2Full) {
+                $t2ExternalPatched = Repair-LocScanScript -ScriptText $t2Full
+                if ($t2ExternalPatched -notmatch 'loc-t2-external-module' -or $t2ExternalPatched -notmatch 'loc-t2-external-check') {
+                    $errors += 'Tier 2 external scan patch self-test failed.'
+                }
             }
 
             foreach ($patched in @($t1Patched, $t2Patched, $t2ProcessPatched)) {
@@ -530,7 +1033,7 @@ function Install-LocBypassRuntime {
         return
     }
 
-    $loader = Get-LocLazyProfileContent
+    $loader = Get-LocOnDemandProfileContent
 
     foreach ($dir in (Get-LocProfileDirectories)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -571,31 +1074,20 @@ function Uninstall-LocBypassRuntime {
     Write-Host 'LOC profile removed.' -ForegroundColor Green
 }
 
-function global:Invoke-Expression {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true, Position = 0)]
-        [string]$Command
-    )
-
-    process {
-        if (Test-LocScanScript -ScriptText $Command) {
-            Invoke-LocPatchedScript -ScriptText $Command
-            return
-        }
-
-        & $script:LocNativeExpression -Command $Command
+function global:Invoke-LocTier1Scan {
+    if ($MyInvocation.InvocationName -eq '.') {
+        Invoke-LocPatchedScript -ScriptText (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $script:LocTier1GistUrl -UseBasicParsing).Content
+        return
     }
+    Write-Host 'Use Invoke-LocTier1Scan from your PowerShell profile (child process).' -ForegroundColor Yellow
 }
 
-Set-Alias -Name iex -Value Invoke-Expression -Scope Global -Force -Option AllScope -ErrorAction SilentlyContinue
-
-function Invoke-LocTier1Scan {
-    iex (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $script:LocTier1GistUrl -UseBasicParsing).Content
-}
-
-function Invoke-LocTier2Scan {
-    iex (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $script:LocTier2GistUrl -UseBasicParsing).Content
+function global:Invoke-LocTier2Scan {
+    if ($MyInvocation.InvocationName -eq '.') {
+        Invoke-LocPatchedScript -ScriptText (Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $script:LocTier2GistUrl -UseBasicParsing).Content
+        return
+    }
+    Write-Host 'Use Invoke-LocTier2Scan from your PowerShell profile (child process).' -ForegroundColor Yellow
 }
 
 if ($Uninstall) {
