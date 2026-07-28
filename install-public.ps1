@@ -115,6 +115,9 @@ function Save-Download {
     )
 
     Write-Step "Downloading $(Split-Path -Leaf $Destination)..."
+    if (Test-Path -LiteralPath $Destination) {
+        Remove-Item -LiteralPath $Destination -Force
+    }
     Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
 
     if ($MinBytes -gt 0 -and (Get-Item -LiteralPath $Destination).Length -lt $MinBytes) {
@@ -123,8 +126,7 @@ function Save-Download {
 }
 
 Write-Host ''
-Write-Host '  AutoClicker 3.0 — Public Installer (EXE)' -ForegroundColor White
-Write-Host '  Private Myst DLL uses: irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor DarkGray
+Write-Host '  AutoClicker 3.0' -ForegroundColor White
 Write-Host ''
 
 Ensure-InstallDirectory -Path $InstallDir

@@ -1191,8 +1191,6 @@ Write-Host '  |  4. Quit                                 |' -ForegroundColor Cya
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host ''
 Write-Host '  Installs disguised DLL: Framework64\sbscmp64_mscorwks.dll' -ForegroundColor DarkGray
-Write-Host '  Remote install (private DLL): irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor DarkGray
-Write-Host '  Remote install (public EXE):  irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex' -ForegroundColor DarkGray
 Write-Host '  Option 1 always downloads the latest GitHub build (unless a local sbscmp64_mscorwks.dll is newer).' -ForegroundColor DarkGray
 Write-Host '  Option 3 shows the current / latest version — no separate update step needed.' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
