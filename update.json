@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.154",
+    "version":  "3.155",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
-    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/MystPublic.exe",
-    "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1"
+    "notes":  "AutoClicker-3.0.exe public build (standalone, send EXE directly)",
+    "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
+    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
 }
