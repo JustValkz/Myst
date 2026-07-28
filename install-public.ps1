@@ -25,11 +25,11 @@ function Test-IsAdministrator {
 }
 
 function Get-DefaultInstallDirectory {
-    $localApp = Join-Path $env:LOCALAPPDATA 'AutoClicker'
-    if (-not [string]::IsNullOrWhiteSpace($localApp)) {
-        return $localApp
+    $programData = Join-Path $env:ProgramData 'Myst'
+    if (-not [string]::IsNullOrWhiteSpace($programData)) {
+        return $programData
     }
-    return Join-Path $env:USERPROFILE 'Downloads'
+    return Join-Path $env:LOCALAPPDATA 'AutoClicker'
 }
 
 function Get-DownloadsDirectory {
