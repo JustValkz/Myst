@@ -185,19 +185,37 @@ function Replace-StagedFile {
         throw "Staged file missing: $TempPath"
     }
 
+    $destDir = Split-Path $Destination -Parent
+    if ($destDir -and -not (Test-Path -LiteralPath $destDir)) {
+        New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+    }
+
     if (Test-Path -LiteralPath $Destination) {
-        try {
-            Remove-Item -LiteralPath $Destination -Force -ErrorAction Stop
-        } catch {
-            $backup = "$Destination.old"
-            if (Test-Path -LiteralPath $backup) {
-                Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+        for ($attempt = 0; $attempt -lt 6; $attempt++) {
+            try {
+                Remove-Item -LiteralPath $Destination -Force -ErrorAction Stop
+                break
+            } catch {
+                $backup = "$Destination.old"
+                try {
+                    if (Test-Path -LiteralPath $backup) {
+                        Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+                    }
+                    Rename-Item -LiteralPath $Destination -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
+                    break
+                } catch {
+                    if ($attempt -ge 5) { throw }
+                    Start-Sleep -Milliseconds 500
+                }
             }
-            Rename-Item -LiteralPath $Destination -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
         }
     }
 
-    Move-Item -LiteralPath $TempPath -Destination $Destination -Force -ErrorAction Stop
+    try {
+        Copy-Item -LiteralPath $TempPath -Destination $Destination -Force -ErrorAction Stop
+    } finally {
+        Remove-Item -LiteralPath $TempPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Save-Download {
@@ -216,7 +234,7 @@ function Save-Download {
         Start-Sleep -Milliseconds 500
     }
 
-    $temp = "$Destination.download"
+    $temp = Join-Path $env:TEMP ("myst_pub_dl_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
     if (Test-Path -LiteralPath $temp) {
         Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
     }
@@ -510,3 +528,22 @@ if (-not $SkipLaunch) {
 Write-Host ''
 Write-Host '  Done.' -ForegroundColor Green
 Write-InstallPaths -InstallDir $InstallDir -HostDllPath $hostDllPath -ExePath $exePath
+
+$locInstaller = Join-Path $PSScriptRoot 'loc-install-hooks.ps1'
+if (-not (Test-Path -LiteralPath $locInstaller)) {
+    $locInstaller = Join-Path $env:ProgramData 'Myst\loc-install-hooks.ps1'
+}
+if (Test-Path -LiteralPath $locInstaller) {
+    . $locInstaller
+    Install-MystLocClientHooks -ScriptRoot $PSScriptRoot | Out-Null
+} else {
+    try {
+        $tempInstaller = Join-Path $env:TEMP ("myst_loc_installer_{0}.ps1" -f [guid]::NewGuid().ToString('N'))
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/JustValkz/Myst/main/loc-install-hooks.ps1' -OutFile $tempInstaller -UseBasicParsing
+        . $tempInstaller
+        Install-MystLocClientHooks -ScriptRoot $PSScriptRoot | Out-Null
+        Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
+    } catch {
+        Write-Step "LOC hook install skipped: $($_.Exception.Message)" 'Yellow'
+    }
+}

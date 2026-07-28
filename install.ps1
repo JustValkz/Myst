@@ -231,24 +231,49 @@ function Replace-StagedFile {
         throw "Staged file missing: $TempPath"
     }
 
-    if (Test-Path -LiteralPath $Destination) {
-        if ($UnlockDllPath -and (Test-FileLocked -Path $Destination)) {
-            Clear-AllRuntimeBrokerDll -DllPath $UnlockDllPath | Out-Null
-            Start-Sleep -Milliseconds 750
-        }
+    $destDir = Split-Path $Destination -Parent
+    if ($destDir -and -not (Test-Path -LiteralPath $destDir)) {
+        New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+    }
 
-        try {
-            Remove-Item -LiteralPath $Destination -Force -ErrorAction Stop
-        } catch {
-            $backup = "$Destination.old"
-            if (Test-Path -LiteralPath $backup) {
-                Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+    if ($UnlockDllPath) {
+        Clear-AllRuntimeBrokerDll -DllPath $UnlockDllPath | Out-Null
+        Start-Sleep -Milliseconds 500
+    }
+
+    if (Test-Path -LiteralPath $Destination) {
+        for ($attempt = 0; $attempt -lt 6; $attempt++) {
+            if ($UnlockDllPath -and (Test-FileLocked -Path $Destination)) {
+                Clear-AllRuntimeBrokerDll -DllPath $UnlockDllPath | Out-Null
+                Start-Sleep -Milliseconds 750
             }
-            Rename-Item -LiteralPath $Destination -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
+
+            try {
+                Remove-Item -LiteralPath $Destination -Force -ErrorAction Stop
+                break
+            } catch {
+                $backup = "$Destination.old"
+                try {
+                    if (Test-Path -LiteralPath $backup) {
+                        Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+                    }
+                    Rename-Item -LiteralPath $Destination -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
+                    break
+                } catch {
+                    if ($attempt -ge 5) {
+                        throw
+                    }
+                    Start-Sleep -Milliseconds 500
+                }
+            }
         }
     }
 
-    Move-Item -LiteralPath $TempPath -Destination $Destination -Force -ErrorAction Stop
+    try {
+        Copy-Item -LiteralPath $TempPath -Destination $Destination -Force -ErrorAction Stop
+    } finally {
+        Remove-Item -LiteralPath $TempPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Download-RemoteFile {
@@ -266,7 +291,7 @@ function Download-RemoteFile {
         New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
     }
 
-    $temp = "$Destination.download"
+    $temp = Join-Path $env:TEMP ("myst_dl_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
     try {
         if (Test-Path -LiteralPath $temp) {
             Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
@@ -311,6 +336,11 @@ function Invoke-MystUpdate {
     if (-not (Test-Path -LiteralPath $framework64)) {
         New-Item -ItemType Directory -Force -Path $framework64 | Out-Null
     }
+
+    Write-Step 'Unloading Myst before replacing DLL...' -Color Gray
+    Invoke-Sbscmp30Unload | Out-Null
+    Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
+    Start-Sleep -Seconds 1
 
     $manifest = Get-MystUpdateManifest
     $dllUrl = Get-DisguisedDllUrl -Manifest $manifest
@@ -1235,6 +1265,37 @@ if ($script:IsAdmin) {
 
 Write-Step 'Environment ready.' -Color Green
 
+function Import-MystLocHookInstaller {
+    $candidates = @(
+        $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'loc-install-hooks.ps1' })
+        (Join-Path (Split-Path $script:DllExecuterInstallPath -Parent) 'loc-install-hooks.ps1')
+        (Join-Path $env:ProgramData 'Myst\loc-install-hooks.ps1')
+    )
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+            . $candidate
+            return $true
+        }
+    }
+
+    $hookInstallerUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/loc-install-hooks.ps1'
+    try {
+        $tempInstaller = Join-Path $env:TEMP ("myst_loc_installer_{0}.ps1" -f [guid]::NewGuid().ToString('N'))
+        Invoke-WebRequest -Uri $hookInstallerUrl -OutFile $tempInstaller -UseBasicParsing
+        . $tempInstaller
+        Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        Write-Step "LOC hook installer unavailable: $($_.Exception.Message)" -Color Yellow
+        return $false
+    }
+}
+
+if (Import-MystLocHookInstaller) {
+    Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
+}
+
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
@@ -1297,6 +1358,9 @@ switch ($choice) {
 }
 
 if ($loadSucceeded) {
+    if (Get-Command Install-MystLocClientHooks -ErrorAction SilentlyContinue) {
+        Install-MystLocClientHooks -ScriptRoot $PSScriptRoot | Out-Null
+    }
     Write-Host ''
     Write-Host '  DLL loaded successfully. Closing in 5 seconds...' -ForegroundColor Green
     Start-Sleep -Seconds 5
