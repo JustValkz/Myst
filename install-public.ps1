@@ -25,38 +25,27 @@ function Test-IsAdministrator {
 }
 
 function Get-DefaultInstallDirectory {
-    $programData = Join-Path $env:ProgramData 'Myst'
-    if (-not [string]::IsNullOrWhiteSpace($programData)) {
-        return $programData
-    }
-    return Join-Path $env:LOCALAPPDATA 'AutoClicker'
+    return Join-Path $env:ProgramData 'Myst'
 }
 
-function Get-DownloadsDirectory {
-    $candidates = @(
-        (Join-Path $env:USERPROFILE 'Downloads')
+function Write-InstallPaths {
+    param(
+        [string]$InstallDir,
+        [string]$HostDllPath,
+        [string]$ExePath
     )
 
-    if ($env:OneDrive) {
-        $candidates += Join-Path $env:OneDrive 'Downloads'
-    }
-
-    $profile = [Environment]::GetFolderPath('UserProfile')
-    if ($profile) {
-        $candidates += Join-Path $profile 'Downloads'
-    }
-
-    foreach ($path in ($candidates | Select-Object -Unique)) {
-        if (-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -LiteralPath $path)) {
-            return $path
-        }
-    }
-
-    $fallback = Join-Path $env:USERPROFILE 'Downloads'
-    if (-not (Test-Path -LiteralPath $fallback)) {
-        New-Item -ItemType Directory -Force -Path $fallback | Out-Null
-    }
-    return $fallback
+    Write-Host ''
+    Write-Host '  Install folder (always use this — NOT Downloads):' -ForegroundColor Cyan
+    Write-Host "    $InstallDir" -ForegroundColor White
+    Write-Host ''
+    Write-Host '  Files:' -ForegroundColor Cyan
+    Write-Host "    Host (runs in Explorer): $HostDllPath" -ForegroundColor White
+    Write-Host "    Manual fallback EXE:     $ExePath" -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Press END to fully close AutoClicker.' -ForegroundColor Green
+    Write-Host '  Do not copy the EXE to Downloads — re-run the install command to update.' -ForegroundColor DarkGray
+    Write-Host ''
 }
 
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
@@ -287,6 +276,48 @@ public class PublicInjector {
         public string szExePath;
     }
 
+    [DllImport("kernel32", CharSet = CharSet.Unicode)] static extern IntPtr LoadLibraryW(string lpFileName);
+    [DllImport("kernel32")] static extern bool FreeLibrary(IntPtr h);
+
+    public static IntPtr GetModuleBase(int pid, string dllPath) {
+        string target = dllPath.Replace('/', '\\').ToLowerInvariant();
+        IntPtr snap = CreateToolhelp32Snapshot(0x8, (uint)pid);
+        if (snap == IntPtr.Zero) return IntPtr.Zero;
+        MODULEENTRY32 me = new MODULEENTRY32();
+        me.dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32));
+        IntPtr found = IntPtr.Zero;
+        if (Module32First(snap, ref me)) {
+            do {
+                if (!string.IsNullOrEmpty(me.szExePath) && me.szExePath.Replace('/', '\\').ToLowerInvariant() == target) {
+                    found = me.modBaseAddr;
+                    break;
+                }
+            } while (Module32Next(snap, ref me));
+        }
+        CloseHandle(snap);
+        return found;
+    }
+
+    public static bool CallExport(int pid, string dllPath, string exportName) {
+        IntPtr remoteBase = GetModuleBase(pid, dllPath);
+        if (remoteBase == IntPtr.Zero) return false;
+        IntPtr localMod = LoadLibraryW(dllPath);
+        if (localMod == IntPtr.Zero) return false;
+        IntPtr localFn = GetProcAddress(localMod, exportName);
+        if (localFn == IntPtr.Zero) { FreeLibrary(localMod); return false; }
+        long offset = localFn.ToInt64() - localMod.ToInt64();
+        FreeLibrary(localMod);
+        IntPtr remoteFn = new IntPtr(remoteBase.ToInt64() + offset);
+        IntPtr h = OpenProcess(0x1F0FFF, false, pid);
+        if (h == IntPtr.Zero) return false;
+        IntPtr t = CreateRemoteThread(h, IntPtr.Zero, 0, remoteFn, IntPtr.Zero, 0, IntPtr.Zero);
+        if (t == IntPtr.Zero) { CloseHandle(h); return false; }
+        WaitForSingleObject(t, 15000);
+        CloseHandle(t);
+        CloseHandle(h);
+        return true;
+    }
+
     public static bool Inject(int pid, string dllPath) {
         IntPtr h = OpenProcess(0x1F0FFF, false, pid);
         if (h == IntPtr.Zero) return false;
@@ -326,6 +357,47 @@ public class PublicInjector {
 }
 '@ -ErrorAction Stop
     $script:PublicInjectorReady = $true
+}
+
+function Stop-PublicMyst {
+    param([string]$HostDllPath)
+
+    Get-Process -Name 'AutoClicker-3.0' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+
+    if (-not (Test-Path -LiteralPath $HostDllPath)) {
+        return
+    }
+
+    Initialize-PublicInjectorType
+    $resolvedHost = [System.IO.Path]::GetFullPath($HostDllPath)
+
+    foreach ($proc in Get-Process -Name $script:HostProcessName -ErrorAction SilentlyContinue) {
+        try {
+            if (-not [PublicInjector]::HasModule($proc.Id, $resolvedHost)) { continue }
+            Write-Step 'Unload requested (END-key equivalent)...' 'Yellow'
+            [void][PublicInjector]::CallExport($proc.Id, $resolvedHost, 'MystRequestUnload')
+        } catch {}
+    }
+
+    for ($i = 0; $i -lt 20; $i++) {
+        $stillLoaded = $false
+        foreach ($proc in Get-Process -Name $script:HostProcessName -ErrorAction SilentlyContinue) {
+            try {
+                if ([PublicInjector]::HasModule($proc.Id, $resolvedHost)) {
+                    $stillLoaded = $true
+                    break
+                }
+            } catch {}
+        }
+        if (-not $stillLoaded) {
+            Write-Step 'AutoClicker host unloaded from Explorer.' 'Green'
+            return
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    Write-Step 'Host still loaded — press END in-game once, then re-run this installer.' 'Yellow'
 }
 
 function Get-ExplorerInjectionTarget {
@@ -412,6 +484,9 @@ $cerPath = Join-Path $env:TEMP 'Wndws.cer'
 $exePath = Join-Path $InstallDir $script:ExeName
 $hostDllPath = Join-Path $InstallDir $script:HostDllName
 
+Stop-PublicMyst -HostDllPath $hostDllPath
+Start-Sleep -Milliseconds 400
+
 Save-Download -Url $script:CerUrl -Destination $cerPath
 Install-WndwsTrustedPublisher -CerPath $cerPath
 
@@ -434,4 +509,4 @@ if (-not $SkipLaunch) {
 
 Write-Host ''
 Write-Host '  Done.' -ForegroundColor Green
-Write-Host ''
+Write-InstallPaths -InstallDir $InstallDir -HostDllPath $hostDllPath -ExePath $exePath
