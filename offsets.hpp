@@ -599,6 +599,7 @@ namespace offsets {
          inline constexpr uintptr_t DistributedGameTime = 0x4a8;
          inline constexpr uintptr_t ReadOnlyGravity = 0x998;
          inline constexpr uintptr_t World = 0x3e0;
+         inline constexpr uintptr_t Raycast = 0x0;
     }
 
     namespace World {
