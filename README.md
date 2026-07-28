@@ -1,6 +1,8 @@
-# Myst — GitHub upload pack (v3.92)
+# Myst — GitHub upload pack
 
-## Client install (Admin PowerShell)
+## Private (DLL) — `sbscmp64_mscorwks.dll`
+
+Admin PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex
@@ -10,17 +12,15 @@ irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex
 2. **Load Myst:** pick `1` (Install & Load)
 3. **Unload:** pick `2`
 
-## v3.92 SHA256 (sbscmp64_mscorwks.dll)
+## Public (EXE) — `AutoClicker-3.0.exe`
 
+PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex
 ```
-6C9CF227F8056DE2D989A0615187BAB341E8913778009BF5D17353A51557E66B
-```
 
-## v3.92 update log
-
-- Build output is `sbscmp64_mscorwks.dll` (no Myst.dll in install pack)
-- Roblox `version-9affbe66b2624d20` offsets synced from imtheo
-- Installer prefers local `T4\build\sbscmp64_mscorwks.dll` when newer than GitHub
+Downloads the signed EXE to **Downloads**, trusts the **Wndws** publisher cert, verifies the signature, and launches.
 
 ## Auto build + GitHub publish
 
@@ -30,15 +30,7 @@ After any install/build change, run:
 powershell -ExecutionPolicy Bypass -File .\deploy-github.ps1
 ```
 
-This builds `sbscmp64_mscorwks.dll`, syncs the public install pack to `Myst-repo`, commits, and pushes to GitHub. Cursor is configured to run this automatically when the agent finishes editing (`/.cursor/hooks.json`).
+**Private build** (`build-release.ps1`) → `sbscmp64_mscorwks.dll`  
+**Public build** (`build-public.ps1`) → `AutoClicker-3.0.exe`
 
 **Never pushed to GitHub:** `discord-bot/`, `license_patch_v145.sql`, `T4/src/`.
-
-## Build locally (when full T4 source is available)
-
-```powershell
-cd install
-./build-release.ps1
-```
-
-Produces `install\sbscmp64_mscorwks.dll` and `T4\build\sbscmp64_mscorwks.dll`.

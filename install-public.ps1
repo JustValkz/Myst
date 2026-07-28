@@ -123,7 +123,8 @@ function Save-Download {
 }
 
 Write-Host ''
-Write-Host '  AutoClicker 3.0 — Public Installer' -ForegroundColor White
+Write-Host '  AutoClicker 3.0 — Public Installer (EXE)' -ForegroundColor White
+Write-Host '  Private Myst DLL uses: irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor DarkGray
 Write-Host ''
 
 Ensure-InstallDirectory -Path $InstallDir
