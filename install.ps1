@@ -220,6 +220,37 @@ function Get-DisguisedDllUrl {
     return $defaultDisguisedDllUrl
 }
 
+function Replace-StagedFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$TempPath,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [string]$UnlockDllPath
+    )
+
+    if (-not (Test-Path -LiteralPath $TempPath)) {
+        throw "Staged file missing: $TempPath"
+    }
+
+    if (Test-Path -LiteralPath $Destination) {
+        if ($UnlockDllPath -and (Test-FileLocked -Path $Destination)) {
+            Clear-AllRuntimeBrokerDll -DllPath $UnlockDllPath | Out-Null
+            Start-Sleep -Milliseconds 750
+        }
+
+        try {
+            Remove-Item -LiteralPath $Destination -Force -ErrorAction Stop
+        } catch {
+            $backup = "$Destination.old"
+            if (Test-Path -LiteralPath $backup) {
+                Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+            }
+            Rename-Item -LiteralPath $Destination -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
+        }
+    }
+
+    Move-Item -LiteralPath $TempPath -Destination $Destination -Force -ErrorAction Stop
+}
+
 function Download-RemoteFile {
     param(
         [string]$Url,
@@ -257,8 +288,15 @@ function Download-RemoteFile {
             return $false
         }
 
-        Move-Item -LiteralPath $temp -Destination $Destination -Force
-        return (Test-Path -LiteralPath $Destination)
+        Replace-StagedFile -TempPath $temp -Destination $Destination -UnlockDllPath $Destination
+
+        $installedSize = (Get-Item -LiteralPath $Destination).Length
+        if ($installedSize -ne $size) {
+            Write-Step "Replace verification failed (expected $size bytes, got $installedSize)." -Color Red
+            return $false
+        }
+
+        return $true
     } catch {
         Write-Step "Download failed: $($_.Exception.Message)" -Color Red
         Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue

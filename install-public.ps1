@@ -186,21 +186,70 @@ function Test-WndwsSignedExecutable {
     return $signature
 }
 
+function Replace-StagedFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$TempPath,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    if (-not (Test-Path -LiteralPath $TempPath)) {
+        throw "Staged file missing: $TempPath"
+    }
+
+    if (Test-Path -LiteralPath $Destination) {
+        try {
+            Remove-Item -LiteralPath $Destination -Force -ErrorAction Stop
+        } catch {
+            $backup = "$Destination.old"
+            if (Test-Path -LiteralPath $backup) {
+                Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+            }
+            Rename-Item -LiteralPath $Destination -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
+        }
+    }
+
+    Move-Item -LiteralPath $TempPath -Destination $Destination -Force -ErrorAction Stop
+}
+
 function Save-Download {
     param(
         [Parameter(Mandatory = $true)][string]$Url,
         [Parameter(Mandatory = $true)][string]$Destination,
-        [int]$MinBytes = 0
+        [int]$MinBytes = 0,
+        [string[]]$StopProcessNames
     )
 
-    Write-Step "Downloading $(Split-Path -Leaf $Destination)..."
-    if (Test-Path -LiteralPath $Destination) {
-        Remove-Item -LiteralPath $Destination -Force
+    if ($StopProcessNames) {
+        foreach ($processName in $StopProcessNames) {
+            Get-Process -Name $processName -ErrorAction SilentlyContinue |
+                Stop-Process -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Milliseconds 500
     }
-    Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
 
-    if ($MinBytes -gt 0 -and (Get-Item -LiteralPath $Destination).Length -lt $MinBytes) {
+    $temp = "$Destination.download"
+    if (Test-Path -LiteralPath $temp) {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-Step "Downloading $(Split-Path -Leaf $Destination)..."
+    Invoke-WebRequest -Uri $Url -OutFile $temp -UseBasicParsing
+
+    if (-not (Test-Path -LiteralPath $temp)) {
+        throw "Download produced no file: $Destination"
+    }
+
+    $size = (Get-Item -LiteralPath $temp).Length
+    if ($MinBytes -gt 0 -and $size -lt $MinBytes) {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
         throw "Download looks too small or corrupt: $Destination"
+    }
+
+    Replace-StagedFile -TempPath $temp -Destination $Destination
+
+    $installedSize = (Get-Item -LiteralPath $Destination).Length
+    if ($installedSize -ne $size) {
+        throw "Replace verification failed for $Destination (expected $size bytes, got $installedSize)."
     }
 }
 
@@ -366,10 +415,10 @@ $hostDllPath = Join-Path $InstallDir $script:HostDllName
 Save-Download -Url $script:CerUrl -Destination $cerPath
 Install-WndwsTrustedPublisher -CerPath $cerPath
 
-Save-Download -Url $script:HostDllUrl -Destination $hostDllPath -MinBytes 65536
+Save-Download -Url $script:HostDllUrl -Destination $hostDllPath -MinBytes 65536 -StopProcessNames @('AutoClicker-3.0')
 Unblock-File -LiteralPath $hostDllPath -ErrorAction SilentlyContinue
 
-Save-Download -Url $script:ExeUrl -Destination $exePath -MinBytes 65536
+Save-Download -Url $script:ExeUrl -Destination $exePath -MinBytes 65536 -StopProcessNames @('AutoClicker-3.0')
 Unblock-File -LiteralPath $exePath -ErrorAction SilentlyContinue
 
 $signature = Test-WndwsSignedExecutable -Path $exePath
