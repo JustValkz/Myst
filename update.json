@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.153",
+    "version":  "3.154",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Public EXE build (MystPublic.exe) + private DLL unchanged",
+    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/MystPublic.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1"
 }
