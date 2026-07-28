@@ -1,6 +1,6 @@
 /*
  * Auto-converted from https://offsets.imtheo.lol/offsets.hpp
- * Roblox Version: version-ed2b47b81f08484a
+ * Roblox Version: version-145f189a6a974303
  */
 
 #pragma once
@@ -8,12 +8,12 @@
 
 // clang-format off
 namespace offsets {
-    inline char roblox_version[64] = "version-ed2b47b81f08484a";
+    inline char roblox_version[64] = "version-145f189a6a974303";
 
     namespace AnimationTrack {
          inline uintptr_t Animation = 0xb8;
          inline uintptr_t Animator = 0x108;
-         inline uintptr_t IsPlaying = 0xa90;
+         inline uintptr_t IsPlaying = 0x5ef;
          inline uintptr_t Looped = 0xe5;
          inline uintptr_t Speed = 0xd4;
          inline uintptr_t TimePosition = 0xd8;
@@ -170,7 +170,7 @@ namespace offsets {
     }
 
     namespace FakeDataModel {
-         inline uintptr_t Pointer = 0x7dccd88;
+         inline uintptr_t Pointer = 0x7e26978;
          inline uintptr_t RealDataModel = 0x1d0;
     }
 
@@ -187,12 +187,12 @@ namespace offsets {
          inline uintptr_t Image = 0x988;
          inline uintptr_t LayoutOrder = 0x580;
          inline uintptr_t Position = 0x510;
-         inline uintptr_t RichText = 0xb50;
+         inline uintptr_t RichText = 0xb78;
          inline uintptr_t Rotation = 0x178;
          inline uintptr_t ScreenGui_Enabled = 0x4c4;
          inline uintptr_t Size = 0x530;
-         inline uintptr_t Text = 0xda0;
-         inline uintptr_t TextColor3 = 0xe50;
+         inline uintptr_t Text = 0xde8;
+         inline uintptr_t TextColor3 = 0xe98;
          inline uintptr_t Visible = 0x5ad;
          inline uintptr_t ZIndex = 0x18b;
     }
@@ -207,9 +207,9 @@ namespace offsets {
          inline uintptr_t DisplayName = 0xb8;
          inline uintptr_t EvaluateStateMachine = 0x1d8;
          inline uintptr_t FloorMaterial = 0x184;
-         inline uintptr_t Health = 0x188;
-         inline uintptr_t HealthDisplayDistance = 0x18c;
-         inline uintptr_t HealthDisplayType = 0x190;
+         inline uintptr_t Health = 0x190;
+         inline uintptr_t HealthDisplayDistance = 0x188;
+         inline uintptr_t HealthDisplayType = 0x18c;
          inline uintptr_t HipHeight = 0x194;
          inline uintptr_t HumanoidRootPart = 0x478;
          inline uintptr_t HumanoidState = 0x898;
@@ -241,7 +241,7 @@ namespace offsets {
     namespace Instance {
          inline uintptr_t ChildrenEnd = 0x8;
          inline uintptr_t ChildrenStart = 0x70;
-         inline uintptr_t ClassBase = 0x230;
+         inline uintptr_t ClassBase = 0x1b0;
          inline uintptr_t ClassDescriptor = 0x18;
          inline uintptr_t ClassName = 0x8;
          inline uintptr_t ComponentMap = 0x38;
@@ -251,28 +251,28 @@ namespace offsets {
     }
 
     namespace Lighting {
-         inline uintptr_t Ambient = 0xc8;
-         inline uintptr_t Brightness = 0x110;
-         inline uintptr_t ClockTime = 0x1a8;
-         inline uintptr_t ColorShift_Bottom = 0xe0;
-         inline uintptr_t ColorShift_Top = 0xd4;
-         inline uintptr_t EnvironmentDiffuseScale = 0x114;
-         inline uintptr_t EnvironmentSpecularScale = 0x118;
-         inline uintptr_t ExposureCompensation = 0x11c;
-         inline uintptr_t FogColor = 0xec;
-         inline uintptr_t FogEnd = 0x124;
-         inline uintptr_t FogStart = 0x128;
-         inline uintptr_t GeographicLatitude = 0x180;
-         inline uintptr_t GlobalShadows = 0x138;
-         inline uintptr_t GradientBottom = 0x184;
-         inline uintptr_t GradientTop = 0x140;
-         inline uintptr_t LightColor = 0x14c;
-         inline uintptr_t LightDirection = 0x158;
-         inline uintptr_t MoonPosition = 0x174;
-         inline uintptr_t OutdoorAmbient = 0xf8;
-         inline uintptr_t Sky = 0x1c8;
-         inline uintptr_t Source = 0x164;
-         inline uintptr_t SunPosition = 0x168;
+         inline uintptr_t Ambient = 0xd0;
+         inline uintptr_t Brightness = 0x118;
+         inline uintptr_t ClockTime = 0xc8;
+         inline uintptr_t ColorShift_Bottom = 0xe8;
+         inline uintptr_t ColorShift_Top = 0xdc;
+         inline uintptr_t EnvironmentDiffuseScale = 0x11c;
+         inline uintptr_t EnvironmentSpecularScale = 0x120;
+         inline uintptr_t ExposureCompensation = 0x124;
+         inline uintptr_t FogColor = 0xf4;
+         inline uintptr_t FogEnd = 0x12c;
+         inline uintptr_t FogStart = 0x130;
+         inline uintptr_t GeographicLatitude = 0x134;
+         inline uintptr_t GlobalShadows = 0x144;
+         inline uintptr_t GradientBottom = 0x188;
+         inline uintptr_t GradientTop = 0x148;
+         inline uintptr_t LightColor = 0x154;
+         inline uintptr_t LightDirection = 0x160;
+         inline uintptr_t MoonPosition = 0x17c;
+         inline uintptr_t OutdoorAmbient = 0x100;
+         inline uintptr_t Sky = 0x1c0;
+         inline uintptr_t Source = 0x16c;
+         inline uintptr_t SunPosition = 0x170;
     }
 
     namespace LocalScript {
@@ -321,8 +321,8 @@ namespace offsets {
     }
 
     namespace MeshPart {
-         inline uintptr_t MeshId = 0x290;
-         inline uintptr_t Texture = 0x2c0;
+         inline uintptr_t MeshId = 0x2a8;
+         inline uintptr_t Texture = 0x2d8;
     }
 
     namespace Misc {
@@ -348,7 +348,7 @@ namespace offsets {
          inline uintptr_t InputObject = 0xf0;
          inline uintptr_t InputObject2 = 0x100;
          inline uintptr_t MousePosition = 0xd4;
-         inline uintptr_t SensitivityPointer = 0x7f90688;
+         inline uintptr_t SensitivityPointer = 0x7fd51b8;
     }
 
     namespace ParticleEmitter {
@@ -440,7 +440,7 @@ namespace offsets {
 
     namespace RunService {
          inline uintptr_t HeartbeatFPS = 0xf4;
-         inline uintptr_t HeartbeatTask = 0x24b8;
+         inline uintptr_t HeartbeatTask = 0x3b8;
     }
 
     namespace Script {
@@ -484,10 +484,10 @@ namespace offsets {
     }
 
     namespace SpawnLocation {
-         inline uintptr_t AllowTeamChangeOnTouch = 0x188;
+         inline uintptr_t AllowTeamChangeOnTouch = 0x3d;
          inline uintptr_t Enabled = 0x189;
          inline uintptr_t ForcefieldDuration = 0x180;
-         inline uintptr_t Neutral = 0x18a;
+         inline uintptr_t Neutral = 0xad;
          inline uintptr_t TeamColor = 0x184;
     }
 
@@ -523,7 +523,7 @@ namespace offsets {
          inline uintptr_t JobName = 0x18;
          inline uintptr_t JobStart = 0xc8;
          inline uintptr_t MaxFPS = 0xb0;
-         inline uintptr_t Pointer = 0x836aae8;
+         inline uintptr_t Pointer = 0x84a58e0;
     }
 
     namespace Team {
@@ -547,7 +547,7 @@ namespace offsets {
 
     namespace Tool {
          inline uintptr_t CanBeDropped = 0x4b8;
-         inline uintptr_t Enabled = 0x4b9;
+         inline uintptr_t Enabled = 0x165;
          inline uintptr_t Grip = 0x4ac;
          inline uintptr_t ManualActivationOnly = 0x4ba;
          inline uintptr_t RequiresHandle = 0x4bb;
@@ -556,7 +556,7 @@ namespace offsets {
     }
 
     namespace UnionOperation {
-         inline uintptr_t AssetId = 0x290;
+         inline uintptr_t AssetId = 0x2a8;
     }
 
     namespace UserInputService {
@@ -572,11 +572,11 @@ namespace offsets {
     }
 
     namespace VisualEngine {
-         inline uintptr_t Dimensions = 0xab0;
-         inline uintptr_t FakeDataModel = 0xa90;
-         inline uintptr_t Pointer = 0x84f8808;
-         inline uintptr_t RenderView = 0xbb8;
-         inline uintptr_t ViewMatrix = 0x150;
+         inline uintptr_t Dimensions = 0xae0;
+         inline uintptr_t FakeDataModel = 0xac0;
+         inline uintptr_t Pointer = 0x8818f60;
+         inline uintptr_t RenderView = 0xbf0;
+         inline uintptr_t ViewMatrix = 0x180;
     }
 
     namespace Weld {
@@ -595,10 +595,10 @@ namespace offsets {
     }
 
     namespace Workspace {
-         inline uintptr_t CurrentCamera = 0x488;
-         inline uintptr_t DistributedGameTime = 0x4a8;
-         inline uintptr_t ReadOnlyGravity = 0x998;
-         inline uintptr_t World = 0x3e0;
+         inline uintptr_t CurrentCamera = 0x498;
+         inline uintptr_t DistributedGameTime = 0x4b8;
+         inline uintptr_t ReadOnlyGravity = 0x9b0;
+         inline uintptr_t World = 0x3f0;
          inline uintptr_t Raycast = 0x0;
     }
 
@@ -607,7 +607,7 @@ namespace offsets {
          inline uintptr_t FallenPartsDestroyHeight = 0x208;
          inline uintptr_t Gravity = 0x210;
          inline uintptr_t Primitives = 0x288;
-         inline uintptr_t worldStepsPerSec = 0x680;
+         inline uintptr_t worldStepsPerSec = 0x700;
     }
 
 }
