@@ -2,5 +2,5 @@
   "version": "3.98",
   "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
   "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-  "notes": "v3.98 - Combat-only rebuild: removed silentaim/flickbot/colorbot; new blue UI (Combat, Visuals, World, Explorer, Settings); aimbot legit curves + random body targeting; triggerbot wallcheck defaults on; despair/autopsy ESP stack (boxes, skeleton, healthbar, china hat, chams, label backgrounds); world lighting/player list + instance explorer; GPU force submit + performance modes."
+  "notes": "v3.98 - full UI rebuild (Combat/Visuals/World/Explorer/Settings, blue theme), removed colorbot/flickbot/silentaim, aimbot legit circular path + random body tracking, triggerbot + HBE combat tab, Autopsy-style ESP labels/skeleton/healthbar/china hat/chams, world lighting + player list, GPU force submit + low-end performance modes."
 }
