@@ -2,7 +2,7 @@
     "version":  "3.270",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Fix install.ps1 parse error (UTF-8/irm iex), profile repair on install, fix-loc-profile.ps1 on GitHub.",
+    "notes":  "Install fix: no self-copy DLL error, unload-delete-download update flow, no extra PowerShell window (run as Admin once).",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",

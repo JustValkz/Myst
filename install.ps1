@@ -146,6 +146,26 @@ function Get-NormalizedDllPath {
     }
 }
 
+function Test-IsInstalledMystDllPath {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    if (Test-DllPathMatch -Left $Path -Right $p) { return $true }
+
+    try {
+        $parent = [System.IO.Path]::GetFullPath((Split-Path -Path $Path -Parent))
+        $framework = [System.IO.Path]::GetFullPath($framework64)
+        if ([string]::Equals($parent, $framework, [StringComparison]::OrdinalIgnoreCase)) {
+            $name = [System.IO.Path]::GetFileName($Path)
+            if ($name -eq 'sbscmp64_mscorwks.dll' -or $name -eq 'Myst.dll') {
+                return $true
+            }
+        }
+    } catch {}
+
+    return $false
+}
+
 function Resolve-LocalBuildDll {
     param([string[]]$Names)
 
@@ -169,6 +189,7 @@ function Resolve-LocalBuildDll {
         foreach ($candidate in $buildCandidates) {
             if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
             if (-not (Test-Path -LiteralPath $candidate)) { continue }
+            if (Test-IsInstalledMystDllPath -Path $candidate) { continue }
             $item = Get-Item -LiteralPath $candidate
             if (-not $best -or $item.LastWriteTimeUtc -gt $best.LastWriteTimeUtc -or ($item.LastWriteTimeUtc -eq $best.LastWriteTimeUtc -and $item.Length -gt $best.Length)) {
                 $best = $item
@@ -196,12 +217,20 @@ function Resolve-LocalBuildDll {
 
     foreach ($root in $roots) {
         if ([string]::IsNullOrWhiteSpace($root)) { continue }
+        try {
+            if ([string]::Equals(
+                    [System.IO.Path]::GetFullPath($root),
+                    [System.IO.Path]::GetFullPath($framework64),
+                    [StringComparison]::OrdinalIgnoreCase)) {
+                continue
+            }
+        } catch {}
         foreach ($name in $Names) {
             if ([string]::IsNullOrWhiteSpace($name)) { continue }
             $candidate = Join-Path $root $name
-            if (Test-Path -LiteralPath $candidate) {
-                return (Resolve-Path -LiteralPath $candidate).Path
-            }
+            if (-not (Test-Path -LiteralPath $candidate)) { continue }
+            if (Test-IsInstalledMystDllPath -Path $candidate) { continue }
+            return (Resolve-Path -LiteralPath $candidate).Path
         }
     }
 
@@ -295,6 +324,64 @@ function Get-DisguisedDllUrl {
     return $defaultDisguisedDllUrl
 }
 
+function Remove-MystInstalledDll {
+    param(
+        [string]$Path = $p,
+        [switch]$Quiet
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $true }
+    if (-not (Test-Path -LiteralPath $Path)) { return $true }
+
+    if (-not $Quiet) {
+        Write-Step 'Removing old sbscmp64_mscorwks.dll...' -Color Gray
+    }
+
+    Clear-AllRuntimeBrokerDll -DllPath $Path | Out-Null
+    Start-Sleep -Milliseconds 500
+
+    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+        if (Test-FileLocked -Path $Path) {
+            Clear-AllRuntimeBrokerDll -DllPath $Path | Out-Null
+            Start-Sleep -Milliseconds 750
+        }
+
+        try {
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            if (-not (Test-Path -LiteralPath $Path)) {
+                if (-not $Quiet) {
+                    Write-Step 'Old DLL deleted.' -Color Green
+                }
+                return $true
+            }
+        } catch {
+            $backup = "$Path.old"
+            try {
+                if (Test-Path -LiteralPath $backup) {
+                    Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+                }
+                Rename-Item -LiteralPath $Path -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
+                if (-not (Test-Path -LiteralPath $Path)) {
+                    if (-not $Quiet) {
+                        Write-Step 'Old DLL moved aside (.old).' -Color Green
+                    }
+                    return $true
+                }
+            } catch {
+                if ($attempt -ge 7) {
+                    if (-not $Quiet) {
+                        Write-Step "Could not delete old DLL: $($_.Exception.Message)" -Color Red
+                    }
+                    return $false
+                }
+                Start-Sleep -Milliseconds 500
+            }
+        }
+    }
+
+    return -not (Test-Path -LiteralPath $Path)
+}
+
 function Replace-StagedFile {
     param(
         [Parameter(Mandatory = $true)][string]$TempPath,
@@ -316,32 +403,8 @@ function Replace-StagedFile {
         Start-Sleep -Milliseconds 500
     }
 
-    if (Test-Path -LiteralPath $Destination) {
-        for ($attempt = 0; $attempt -lt 6; $attempt++) {
-            if ($UnlockDllPath -and (Test-FileLocked -Path $Destination)) {
-                Clear-AllRuntimeBrokerDll -DllPath $UnlockDllPath | Out-Null
-                Start-Sleep -Milliseconds 750
-            }
-
-            try {
-                Remove-Item -LiteralPath $Destination -Force -ErrorAction Stop
-                break
-            } catch {
-                $backup = "$Destination.old"
-                try {
-                    if (Test-Path -LiteralPath $backup) {
-                        Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
-                    }
-                    Rename-Item -LiteralPath $Destination -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
-                    break
-                } catch {
-                    if ($attempt -ge 5) {
-                        throw
-                    }
-                    Start-Sleep -Milliseconds 500
-                }
-            }
-        }
+    if (-not (Remove-MystInstalledDll -Path $Destination -Quiet)) {
+        throw "Could not remove existing DLL at $Destination"
     }
 
     try {
@@ -416,6 +479,11 @@ function Invoke-MystUpdate {
     Invoke-Sbscmp30Unload | Out-Null
     Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
     Start-Sleep -Seconds 1
+
+    if (-not (Remove-MystInstalledDll -Path $p)) {
+        Write-Step 'Could not remove the old DLL. Close any RuntimeBroker using Myst and retry.' -Color Red
+        return $false
+    }
 
     $manifest = Get-MystUpdateManifest
     $dllUrl = Get-DisguisedDllUrl -Manifest $manifest
@@ -514,6 +582,11 @@ function Copy-LocalBuildDll {
     $source = Resolve-LocalBuildDll -Names $Names
     if (-not $source) { return $false }
 
+    if (Test-DllPathMatch -Left $source -Right $Destination) {
+        Write-Step 'Local build is already installed at destination.' -Color Gray
+        return (Prepare-DllFile -Path $Destination)
+    }
+
     if ($Names -contains 'Myst.dll' -or $Names -contains 'sbscmp64_mscorwks.dll') {
         if (-not (Test-MystDllSource -Path $source)) {
             return $false
@@ -523,6 +596,11 @@ function Copy-LocalBuildDll {
     $targetDir = Split-Path $Destination -Parent
     if ($targetDir -and -not (Test-Path -LiteralPath $targetDir)) {
         New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+    }
+
+    if (-not (Remove-MystInstalledDll -Path $Destination -Quiet)) {
+        Write-Step 'Could not remove old DLL before copying local build.' -Color Red
+        return $false
     }
 
     Copy-Item -LiteralPath $source -Destination $Destination -Force | Out-Null
@@ -603,7 +681,7 @@ function Ensure-Sbscmp30OnDisk {
         $prepared = Prepare-DllFile -Path $p
         if ($prepared) {
             $source = Resolve-LocalBuildDll -Names @('Myst.dll', 'sbscmp64_mscorwks.dll')
-            if ($source) {
+            if ($source -and -not (Test-DllPathMatch -Left $source -Right $p)) {
                 $sourceInfo = Get-Item -LiteralPath $source
                 $destInfo = Get-Item -LiteralPath $p
                 if ($ForceRefresh -or $sourceInfo.LastWriteTimeUtc -gt $destInfo.LastWriteTimeUtc -or $sourceInfo.Length -ne $destInfo.Length) {
@@ -998,32 +1076,28 @@ function Unload-DllFromProcesses {
 function Invoke-LoadAllDlls {
     param([switch]$SkipUnload)
 
-    # Required order: unload once first (unless caller already did), then
-    # refresh/download the DLL, then inject without unloading again.
     if (-not $SkipUnload) {
         Write-Host ''
         Write-Step 'Unloading any existing sbscmp64...' -Color Cyan
         Invoke-Sbscmp30Unload | Out-Null
+        Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
         Start-Sleep -Seconds 2
     }
 
     Write-Step 'Ensuring latest Myst DLL is present...' -Color Cyan
     $buildDll = Resolve-LocalBuildDll -Names @('sbscmp64_mscorwks.dll', 'Myst.dll')
     if (-not [string]::IsNullOrWhiteSpace($buildDll)) {
-        # Dev machine: prefer newest local sbscmp64 build.
-        if (-not (Ensure-Sbscmp30OnDisk -ForceRefresh)) {
+        Write-Step "Installing from local dev build: $buildDll" -Color Gray
+        if (-not (Copy-LocalBuildDll -Destination $p -Names @('sbscmp64_mscorwks.dll', 'Myst.dll'))) {
             Write-Host ''
             Write-Host '  Myst DLL missing in Framework64. Local copy failed - check T4\build\sbscmp64_mscorwks.dll.' -ForegroundColor Yellow
             return $false
         }
     } else {
-        # End users: Install & Load always pulls the latest pack from GitHub.
-        if (Test-FileLocked -Path $p) {
-            Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
-        }
+        Write-Step 'Pulling latest sbscmp64 from GitHub (unload -> delete -> download)...' -Color Cyan
         if (-not (Invoke-MystUpdate)) {
             Write-Host ''
-            Write-Host '  Myst DLL missing in Framework64. Download failed - check GitHub files.' -ForegroundColor Yellow
+            Write-Host '  Myst DLL update failed - check GitHub files or run Unload (option 2) and retry.' -ForegroundColor Yellow
             return $false
         }
         if (-not (Prepare-DllFile -Path $p)) {
@@ -1240,36 +1314,12 @@ public class Injector {
 $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $script:IsAdmin) {
     Write-Host ''
-    Write-Host '  Administrator rights required. Requesting elevation...' -ForegroundColor Yellow
-    $scriptPath = Resolve-InstallScriptPath
-    if (-not $scriptPath) {
-        Write-Host '  Could not resolve installer script path.' -ForegroundColor Red
-        Write-Host '  Save install.ps1 locally and run: powershell -File install.ps1' -ForegroundColor DarkGray
-        exit 1
-    }
-
-    $resolved = [System.IO.Path]::GetFullPath($scriptPath)
-    $dest = [System.IO.Path]::GetFullPath($script:DllExecuterInstallPath)
-    if ($resolved -ne $dest) {
-        try {
-            Copy-Item -LiteralPath $scriptPath -Destination $script:DllExecuterInstallPath -Force
-            $scriptPath = $script:DllExecuterInstallPath
-        } catch {
-            Write-Host "  Warning: could not cache installer: $($_.Exception.Message)" -ForegroundColor Yellow
-        }
-    } else {
-        $scriptPath = $script:DllExecuterInstallPath
-    }
-
-    $elevateArgs = @(
-        '-NoProfile'
-        '-ExecutionPolicy', 'Bypass'
-        '-File', $scriptPath
-    )
-    if ($WatchMode) { $elevateArgs += '-WatchMode' }
-    if ($Choice) { $elevateArgs += '-Choice', $Choice }
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $elevateArgs -Wait | Out-Null
-    exit $LASTEXITCODE
+    Write-Host '  Administrator PowerShell required (stay in this window - do not use a child window).' -ForegroundColor Yellow
+    Write-Host '  1. Close this window' -ForegroundColor DarkGray
+    Write-Host '  2. Start Menu -> PowerShell -> Run as administrator' -ForegroundColor DarkGray
+    Write-Host '  3. Run:' -ForegroundColor DarkGray
+    Write-Host '     irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor White
+    exit 1
 }
 
 function Import-MystLocHookInstaller {
