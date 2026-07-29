@@ -1318,7 +1318,7 @@ if (-not $script:IsAdmin) {
     Write-Host '  1. Close this window' -ForegroundColor DarkGray
     Write-Host '  2. Start Menu -> PowerShell -> Run as administrator' -ForegroundColor DarkGray
     Write-Host '  3. Run:' -ForegroundColor DarkGray
-    Write-Host '     irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor White
+    Write-Host '     irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst.ps1 | iex' -ForegroundColor White
     exit 1
 }
 
