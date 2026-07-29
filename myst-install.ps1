@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Continue'
 
 $framework64 = "$env:SystemRoot\Microsoft.NET\Framework64"
 $p = "$framework64\sbscmp64_mscorwks.dll"
-$defaultScriptUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/myst-install.ps1'
+$defaultScriptUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1'
 $defaultUpdateManifestUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json'
 $defaultDisguisedDllUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll'
 $script:UpdateManifestPath = Join-Path $framework64 '.update.json'
@@ -1318,7 +1318,7 @@ if (-not $script:IsAdmin) {
     Write-Host '  1. Close this window' -ForegroundColor DarkGray
     Write-Host '  2. Start Menu -> PowerShell -> Run as administrator' -ForegroundColor DarkGray
     Write-Host '  3. Run:' -ForegroundColor DarkGray
-    Write-Host '     irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst.ps1 | iex' -ForegroundColor White
+    Write-Host '     irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor White
     exit 1
 }
 
