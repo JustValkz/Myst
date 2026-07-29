@@ -879,10 +879,161 @@ function Restart-RuntimeBrokerHost {
     Start-Sleep -Seconds 2
 }
 
+function Restart-RuntimeBrokerHost {
+    Write-Step 'Restarting RuntimeBroker host...' -Color Gray
+    Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+    Start-Process $x -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+    Start-Sleep -Seconds 2
+}
+
+function Get-ProcessesWithMystDll {
+    param([string]$DllPath)
+
+    $found = @()
+    foreach ($name in @('RuntimeBroker', 'explorer', 'cmd', 'dllhost')) {
+        foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+            if (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath) {
+                $found += $proc
+            }
+        }
+    }
+    return @($found | Sort-Object Id -Unique)
+}
+
+function Clear-AllMystDllHosts {
+    param([string]$DllPath)
+
+    $withDll = @(Get-ProcessesWithMystDll -DllPath $DllPath)
+    if (-not $withDll) {
+        Write-Step 'No Myst host process currently has the DLL loaded.' -Color Gray
+        return $true
+    }
+
+    Write-Step "Found $($withDll.Count) host process(es) with DLL loaded." -Color Gray
+    $ok = $true
+    foreach ($proc in $withDll) {
+        if ($proc.ProcessName -eq 'RuntimeBroker') {
+            if (-not (Remove-RuntimeBrokerDll -Process $proc -DllPath $DllPath)) {
+                $ok = $false
+            }
+            continue
+        }
+
+        Write-Step "Clearing DLL from $($proc.ProcessName) PID $($proc.Id)..." -Color Gray
+        $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+        if ([Injector]::FreeModuleCompletely($proc.Id, $injectPath)) {
+            Write-Step "  Unloaded PID $($proc.Id)" -Color Green
+        } else {
+            if ($proc.ProcessName -in @('cmd', 'dllhost')) {
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                Write-Step "  Stopped fallback host PID $($proc.Id)" -Color Green
+            } else {
+                $ok = $false
+            }
+        }
+    }
+    return $ok
+}
+
+function Ensure-RuntimeBrokerAvailable {
+    if (Get-Process -Name $n -ErrorAction SilentlyContinue) {
+        return $true
+    }
+
+    Write-Step 'Waking RuntimeBroker via Settings shell...' -Color Gray
+    try {
+        Start-Process 'explorer.exe' 'ms-settings:' -ErrorAction SilentlyContinue | Out-Null
+        Start-Sleep -Seconds 3
+    } catch {}
+
+    if (Get-Process -Name $n -ErrorAction SilentlyContinue) {
+        return $true
+    }
+
+    Write-Step 'Starting RuntimeBroker directly...' -Color Gray
+    Start-Process $x -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+    Start-Sleep -Seconds 2
+    return [bool](Get-Process -Name $n -ErrorAction SilentlyContinue)
+}
+
+function Get-MystInjectionCandidates {
+    param([string]$DllPath)
+
+    $candidates = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+
+    foreach ($proc in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
+        if (-not (Test-RuntimeBrokerHasDll -Process $proc -DllPath $DllPath)) {
+            $candidates.Add($proc)
+        }
+    }
+
+    foreach ($proc in @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+        if (-not (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath)) {
+            $candidates.Add($proc)
+        }
+    }
+
+    return @($candidates)
+}
+
+function Start-MystFallbackHost {
+    Write-Step 'Starting fallback Myst host...' -Color Gray
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = Join-Path $env:SystemRoot 'System32\cmd.exe'
+    $psi.Arguments = '/c ping -n 86400 127.0.0.1 >nul'
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $psi.CreateNoWindow = $true
+    $psi.UseShellExecute = $false
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        Start-Sleep -Seconds 1
+        return $proc
+    } catch {
+        return $null
+    }
+}
+
+function Invoke-InjectMystDll {
+    param(
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    if (-not $Target -or $Target.HasExited) { return $false }
+
+    $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+    $loadResult = [Injector]::X($Target.Id, $injectPath)
+    if ($loadResult -gt 0) {
+        Start-Sleep -Seconds 2
+        if (Test-ProcessHasDll -ProcessId $Target.Id -DllPath $DllPath) {
+            return $true
+        }
+        if ([Injector]::GetModuleBase($Target.Id, $injectPath) -ne [IntPtr]::Zero) {
+            return $true
+        }
+        Write-Step 'Injection API succeeded but module not visible in target process.' -Color Yellow
+        return $true
+    }
+
+    if ($loadResult -eq 0) {
+        Write-Step 'LoadLibraryW returned NULL in target process (blocked or bad DLL).' -Color Yellow
+    } else {
+        $detail = [Injector]::LastError
+        if ($detail) {
+            Write-Step "Injection API returned failure ($detail)." -Color Yellow
+        } else {
+            Write-Step 'Injection API returned failure.' -Color Yellow
+        }
+    }
+
+    return $false
+}
+
 function Invoke-Sbscmp30LoadFromDisk {
     param([switch]$SkipUnload)
 
-    Write-Step 'Starting Myst host load (RuntimeBroker)...' -Color Cyan
+    Write-Step 'Starting Myst host load...' -Color Cyan
 
     if (-not (Ensure-Sbscmp30OnDisk)) {
         Write-Step 'Ensure-Sbscmp30OnDisk failed.' -Color Red
@@ -894,97 +1045,68 @@ function Invoke-Sbscmp30LoadFromDisk {
         return $false
     }
 
-    # Unload only when this path is responsible for cleanup.
-    # Deploy/load flows that already unloaded skip a second free attempt.
     if (-not $SkipUnload) {
-        Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
-
-        foreach ($stubborn in @(Get-RuntimeBrokersWithDll -DllPath $p)) {
-            Remove-RuntimeBrokerDll -Process $stubborn -DllPath $p | Out-Null
-        }
-
-        Start-Sleep -Seconds 2
+        Clear-AllMystDllHosts -DllPath $p | Out-Null
+        Start-Sleep -Seconds 1
     }
 
-    $targetProc = $null
-    $maxInjectRetries = 8
     Enable-SeDebugPrivilege | Out-Null
     $injectDllPath = Get-NormalizedDllPath -DllPath $p
+    $script:MystFallbackHostPid = $null
+    $maxInjectRetries = 6
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
-        if ($retry -gt 0) {
-            Restart-RuntimeBrokerHost
-            Start-Sleep -Seconds 3
+        Ensure-RuntimeBrokerAvailable | Out-Null
+
+        $candidates = @(Get-MystInjectionCandidates -DllPath $p)
+        if ($candidates.Count -eq 0) {
+            $fallback = Start-MystFallbackHost
+            if ($fallback) {
+                $script:MystFallbackHostPid = $fallback.Id
+                $candidates = @($fallback)
+            }
         }
 
-        $targetProc = Get-RuntimeBrokerInjectionTarget -DllPath $p
-        if (-not $targetProc) {
-            $targetProc = Start-RuntimeBrokerInstance -DllPath $p
-        }
-        if (-not $targetProc) {
-            Write-Step 'No usable RuntimeBroker host available - restarting host...' -Color Yellow
-            Restart-RuntimeBrokerHost
-            Start-Sleep -Seconds 3
-            $targetProc = Start-RuntimeBrokerInstance -DllPath $p
-        }
-        if (-not $targetProc) {
-            Write-Step 'No usable RuntimeBroker host available.' -Color Red
+        if ($candidates.Count -eq 0) {
+            Write-Step 'No injectable host process available yet.' -Color Yellow
             Start-Sleep -Seconds 2
             continue
         }
 
-        $targetPid = $targetProc.Id
-        Write-Step "Injecting sbscmp64 into RuntimeBroker PID $targetPid (attempt $($retry + 1))..." -Color Gray
-
-        $loadResult = [Injector]::X($targetPid, $injectDllPath)
-        if ($loadResult -gt 0) {
-            Start-Sleep -Seconds 2
-            $refreshed = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
-            if ($refreshed -and (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $p)) {
-                Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid" -Color Green
+        foreach ($targetProc in $candidates) {
+            Write-Step "Injecting sbscmp64 into $($targetProc.ProcessName) PID $($targetProc.Id) (attempt $($retry + 1))..." -Color Gray
+            if (Invoke-InjectMystDll -Target $targetProc -DllPath $p) {
+                Write-Step "sbscmp64 loaded in $($targetProc.ProcessName) PID $($targetProc.Id)" -Color Green
                 return $true
             }
 
-            $moduleBase = [Injector]::GetModuleBase($targetPid, $injectDllPath)
-            if ($moduleBase -ne [IntPtr]::Zero) {
-                Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid (toolhelp confirmed)" -Color Green
-                return $true
-            }
-
-            Write-Step 'Injection API succeeded but module not visible in target process.' -Color Yellow
-        } elseif ($loadResult -eq 0) {
-            Write-Step 'LoadLibraryW returned NULL in target process (blocked or bad DLL).' -Color Yellow
-        } else {
-            $detail = [Injector]::LastError
-            if ($detail) {
-                Write-Step "Injection API returned failure ($detail)." -Color Yellow
-            } else {
-                Write-Step 'Injection API returned failure.' -Color Yellow
+            if ($targetProc.ProcessName -eq $n) {
+                Stop-Process -Id $targetProc.Id -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 1
             }
         }
 
-        $cleanup = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
-        if ($cleanup) {
-            Remove-RuntimeBrokerDll -Process $cleanup -DllPath $p | Out-Null
-        }
-        Start-Sleep -Seconds 2
-        Restart-RuntimeBrokerHost
         Start-Sleep -Seconds 2
     }
 
+    Write-Step 'Trying multi-process inject fallback...' -Color Gray
+    if ((Inject-DllIntoProcesses -DllPath $injectDllPath -ProcessNames @('explorer', 'RuntimeBroker', 'dllhost') -Label 'sbscmp64') -gt 0) {
+        return $true
+    }
+
     Write-Step 'Unable to load sbscmp64 after retries.' -Color Red
-    Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
+    Clear-AllMystDllHosts -DllPath $p | Out-Null
     return $false
 }
 
 function Invoke-Sbscmp30Unload {
-    $withDll = @(Get-RuntimeBrokersWithDll -DllPath $p)
+    $withDll = @(Get-ProcessesWithMystDll -DllPath $p)
     if (-not $withDll) {
         Write-Host "`n  sbscmp64 Already Unloaded" -ForegroundColor Yellow
         return $true
     }
 
-    $ok = Clear-AllRuntimeBrokerDll -DllPath $p
+    $ok = Clear-AllMystDllHosts -DllPath $p
     if ($ok) {
         Write-Host "`n  sbscmp64 Unloaded" -ForegroundColor Green
     } else {
@@ -1087,7 +1209,7 @@ function Invoke-LoadAllDlls {
         Write-Host ''
         Write-Step 'Unloading any existing sbscmp64...' -Color Cyan
         Invoke-Sbscmp30Unload | Out-Null
-        Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
+        Clear-AllMystDllHosts -DllPath $p | Out-Null
         Start-Sleep -Seconds 2
     }
 
