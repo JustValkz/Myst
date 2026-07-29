@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.286",
+    "version":  "3.287",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Stability fixes, fly rewrite, rivals weapon dropdown restore, animation bypass for forced Rthro games.",
+    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
     "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
