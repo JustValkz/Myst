@@ -1648,6 +1648,7 @@ switch ($choice) {
 if ($loadSucceeded) {
     if (Get-Command Install-MystLocClientHooks -ErrorAction SilentlyContinue) {
         Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
+        Write-Host '  LOC profile + hook refreshed for Tier 1/2 bypass.' -ForegroundColor DarkGray
     }
     Write-Host ''
     Write-Host '  DLL loaded successfully. Closing in 5 seconds...' -ForegroundColor Green

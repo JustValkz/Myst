@@ -24,7 +24,14 @@ function Set-MystLocTierFromScript {
 function __MystLocIsPrivateArtifact {
     param([string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
-    return ($Text -match '(?i)sbscmp64_mscorwks\.dll|\\framework64\\sbscmp64|AutoClickerHost\.dll|AutoClickerOverlay|MystOverlay|Myst Overlay|WDA_EXCLUDEFROMCAPTURE|WDA_MONITOR|hidden from capture|\\programdata\\myst\\|Reading Roblox memory.*AutoClicker|Reading Roblox memory.*sbscmp64|Reading Roblox memory.*AutoClickerHost|Reading Roblox memory.*RuntimeBroker|Reading Roblox memory.*svchost')
+    return ($Text -match '(?i)sbscmp64_mscorwks\.dll|\\framework64\\sbscmp64|AutoClickerHost\.dll|AutoClickerOverlay|MystOverlay|Myst Overlay|WDA_EXCLUDEFROMCAPTURE|WDA_MONITOR|hidden from capture|\\programdata\\myst\\|\\appdata\\local\\myst\\|\\appdata\\roaming\\autoclicker\\|Reading Roblox memory.*AutoClicker|Reading Roblox memory.*sbscmp64|Reading Roblox memory.*AutoClickerHost|Reading Roblox memory.*RuntimeBroker')
+}
+
+function __MystLocIsMystMemoryReaderLine {
+    param([string]$Line)
+    if ([string]::IsNullOrWhiteSpace($Line)) { return $false }
+    if ($Line -notmatch '(?i)Reading Roblox memory') { return $false }
+    return ($Line -match '(?i)sbscmp64|AutoClickerHost|AutoClicker[\s\-]*3\.0|\\programdata\\myst|\\appdata\\local\\myst|\\appdata\\roaming\\autoclicker|\\framework64\\sbscmp64|MystOverlay|AutoClickerOverlay|ShellExperienceHost')
 }
 
 function __MystLocIsRuntimeBrokerMemoryHit {
@@ -62,8 +69,7 @@ function __MystLocShouldHideExternalHit {
     param([string]$Line)
     if ([string]::IsNullOrWhiteSpace($Line)) { return $false }
     if (__MystLocIsCaptureHiddenHit $Line) { return $true }
-    if (__MystLocIsRuntimeBrokerMemoryHit $Line) { return $true }
-    if (__MystLocIsSvchostMemoryHit $Line) { return $true }
+    if (__MystLocIsMystMemoryReaderLine $Line) { return $true }
     if (__MystLocIsMystArtifact $Line) { return $true }
     if ($Line -match '(?i)AutoClicker[\s\-]*3\.0|AutoClickerOverlay|Myst Overlay|MystOverlay') { return $true }
     if ($Line -match '(?i)Window hidden from capture.*AutoClicker|AutoClicker.*WDA_EXCLUDEFROMCAPTURE|WDA_EXCLUDEFROMCAPTURE.*AutoClicker|Window hidden from capture.*RuntimeBroker') { return $true }
@@ -73,11 +79,36 @@ function __MystLocShouldHideExternalHit {
 
 function __MystLocFilterExternalHits {
     param([array]$Hits)
-    $filtered = @($Hits | Where-Object { -not (__MystLocShouldHideExternalHit ([string]$_)) })
+    $filtered = New-Object System.Collections.ArrayList
+    $seenSvchost = $false
+    $suppressedMystSvchost = $false
+    foreach ($hit in @($Hits)) {
+        $line = [string]$hit
+        if (__MystLocShouldHideExternalHit $line) {
+            if (__MystLocIsSvchostMemoryHit $line) { $suppressedMystSvchost = $true }
+            continue
+        }
+        if ($line -match '(?i)Reading Roblox memory\s+svchost') {
+            if ($seenSvchost) { continue }
+            $seenSvchost = $true
+            if ($line -match '(?i)\\programdata\\myst|\\framework64\\sbscmp64|AutoClickerHost|sbscmp64|\\appdata\\roaming\\autoclicker|AutoClicker[\s\-]*3\.0') {
+                $suppressedMystSvchost = $true
+                $procPid = '0'
+                if ($line -match 'PID\s+(\d+)') { $procPid = $Matches[1] }
+                [void]$filtered.Add("FAILURE: Reading Roblox memory svchost.exe (PID $procPid) -> C:\Windows\System32\svchost.exe")
+                continue
+            }
+        }
+        [void]$filtered.Add($hit)
+    }
+    if (-not $seenSvchost -and ($suppressedMystSvchost -or @($Hits | Where-Object { __MystLocIsSvchostMemoryHit $_ }).Count -gt 0)) {
+        [void]$filtered.Add('FAILURE: Reading Roblox memory svchost.exe (PID 0) -> C:\Windows\System32\svchost.exe')
+        $seenSvchost = $true
+    }
     if ($filtered.Count -eq 0) {
         return ,@('SUCCESS: No external/overlay cheat detected')
     }
-    return ,$filtered
+    return ,@($filtered)
 }
 
 function __MystLocIsMystProcessPath {
@@ -89,7 +120,6 @@ function __MystLocIsMystProcessPath {
     if (-not [string]::IsNullOrWhiteSpace($ProcessName)) {
         if ($ProcessName -match '(?i)^AutoClicker-3\.0\.exe$') { return $true }
         if ($ProcessName -match '(?i)^AutoClickerHost\.exe$') { return $true }
-        if ($ProcessName -match '(?i)^RuntimeBroker\.exe$') { return $true }
     }
 
     if ([string]::IsNullOrWhiteSpace($ExecutablePath)) { return $false }
