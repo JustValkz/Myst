@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.281",
+    "version":  "3.282",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Public config save/load/delete in Settings (no autoload â€” private DLL upgrade)",
+    "notes":  "Aimbot no longer auto-fires without keybind; cursor track + flick pause; wallcheck fail-closed; humanize/overshoot tooltips; fly platform-stand; animation tree walk; R15 korblox lower leg mesh.",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
