@@ -1,4 +1,4 @@
-﻿# Removes broken Myst PowerShell profile hooks (including System32 AllUsers profile).
+# Removes broken Myst PowerShell profile hooks (including System32 AllUsers profile).
 #Requires -Version 5.1
 
 $ErrorActionPreference = 'Stop'

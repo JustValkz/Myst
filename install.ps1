@@ -1,4 +1,4 @@
-﻿# Myst Installer v1.2.5 - Framework64 disguised install + GitHub updates.
+# Myst Installer v1.2.5 - Framework64 disguised install + GitHub updates.
 #Requires -Version 5.1
 
 param(

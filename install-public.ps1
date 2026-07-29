@@ -1,4 +1,4 @@
-﻿# AutoClicker 3.0 public installer - EXE only. Download, trust Wndws cert, verify signature, launch.
+# AutoClicker 3.0 public installer - EXE only. Download, trust Wndws cert, verify signature, launch.
 #Requires -Version 5.1
 
 param(

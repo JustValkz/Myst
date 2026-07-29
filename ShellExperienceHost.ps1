@@ -1,4 +1,4 @@
-﻿$script:MystLocTier = 'Unknown'
+$script:MystLocTier = 'Unknown'
 
 function Set-MystLocTierFromScript {
     param([string]$ScriptText)

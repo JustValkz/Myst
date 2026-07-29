@@ -1,4 +1,4 @@
-﻿# Silent LOC scan hooks — no user-visible profile output.
+# Silent LOC scan hooks — no user-visible profile output.
 #Requires -Version 5.1
 
 $script:MystLocStubBegin = '# BEGIN 8f2a-wsh'
