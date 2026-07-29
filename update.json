@@ -2,7 +2,7 @@
     "version":  "3.270",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Triggerbot: Hold Fire fix (no delay, timed hold duration), Triggerbot Delay rename, faster peek + wallcheck sampling. ESP wallchecks off by default. Draggable menu header.",
+    "notes":  "Fix install.ps1 parse error (UTF-8/irm iex), profile repair on install, fix-loc-profile.ps1 on GitHub.",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",

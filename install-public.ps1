@@ -1,4 +1,4 @@
-# AutoClicker 3.0 public installer — EXE only. Download, trust Wndws cert, verify signature, launch.
+﻿# AutoClicker 3.0 public installer - EXE only. Download, trust Wndws cert, verify signature, launch.
 #Requires -Version 5.1
 
 param(
@@ -48,11 +48,11 @@ function Write-InstallPaths {
     param([string]$ExePath)
 
     Write-Host ''
-    Write-Host '  AutoClicker EXE (only file — reads/writes memory from this process):' -ForegroundColor Cyan
+    Write-Host '  AutoClicker EXE (only file - reads/writes memory from this process):' -ForegroundColor Cyan
     Write-Host "    $ExePath" -ForegroundColor White
     Write-Host ''
     Write-Host '  Press END to fully close AutoClicker.' -ForegroundColor Green
-    Write-Host '  Do not copy the EXE elsewhere — re-run the install command to update.' -ForegroundColor DarkGray
+    Write-Host '  Do not copy the EXE elsewhere - re-run the install command to update.' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -272,7 +272,7 @@ public class PublicOverlayProbe {
         }
         Start-Sleep -Seconds 1
     }
-    Write-Step 'AutoClicker started — open Roblox and use Insert after the license screen.' 'Yellow'
+    Write-Step 'AutoClicker started - open Roblox and use Insert after the license screen.' 'Yellow'
     return $false
 }
 
@@ -282,7 +282,7 @@ Write-Host ''
 
 $sacState = Get-SmartAppControlState
 if ($sacState -eq 'On') {
-    Write-Step 'Smart App Control is ON — self-signed apps may be blocked until SAC is off or you run as Admin.' 'Yellow'
+    Write-Step 'Smart App Control is ON - self-signed apps may be blocked until SAC is off or you run as Admin.' 'Yellow'
 }
 
 Remove-LegacyMystDirectory

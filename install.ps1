@@ -1,4 +1,4 @@
-# Myst Installer v1.2.5 — Framework64 disguised install + GitHub updates.
+﻿# Myst Installer v1.2.5 - Framework64 disguised install + GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -37,7 +37,7 @@ function Resolve-InstallScriptPath {
         New-Item -ItemType Directory -Force -Path $installDir | Out-Null
     }
 
-    # irm | iex has no script file — always refresh from GitHub before elevation.
+    # irm | iex has no script file - always refresh from GitHub before elevation.
     try {
         Invoke-WebRequest -Uri $defaultScriptUrl -OutFile $script:DllExecuterInstallPath -UseBasicParsing
         if (Test-Path -LiteralPath $script:DllExecuterInstallPath) {
@@ -499,7 +499,7 @@ function Show-MystVersionInfo {
 
     Write-Host ''
     Write-Host '  Tip: Install & Load always pulls the latest build from GitHub.' -ForegroundColor DarkGray
-    Write-Host '  There is nothing separate to "update" — option 1 already does that.' -ForegroundColor DarkGray
+    Write-Host '  There is nothing separate to "update" - option 1 already does that.' -ForegroundColor DarkGray
     return $true
 }
 
@@ -734,7 +734,7 @@ function Remove-RuntimeBrokerDll {
         }
     }
 
-    Write-Step "  Unload incomplete — stopping $($Process.ProcessName) PID $($Process.Id)..." -Color Yellow
+    Write-Step "  Unload incomplete - stopping $($Process.ProcessName) PID $($Process.Id)..." -Color Yellow
 
     Write-Step "  Stopping $($Process.ProcessName) PID $($Process.Id)..." -Color Yellow
     try {
@@ -1061,7 +1061,7 @@ public class MystOverlayProbe {
     for ($i = 0; $i -lt 15; $i++) {
         $hwnd = [MystOverlayProbe]::FindWindow('MystOverlay', $null)
         if ($hwnd -ne [IntPtr]::Zero) {
-            Write-Step 'Myst overlay window detected — loader is running.' -Color Green
+            Write-Step 'Myst overlay window detected - loader is running.' -Color Green
             return $true
         }
         Start-Sleep -Seconds 1
@@ -1272,6 +1272,39 @@ if (-not $script:IsAdmin) {
     exit $LASTEXITCODE
 }
 
+function Import-MystLocHookInstaller {
+    $candidates = @(
+        $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'loc-install-hooks.ps1' })
+        (Join-Path (Split-Path $script:DllExecuterInstallPath -Parent) 'loc-install-hooks.ps1')
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\loc-install-hooks.ps1')
+    )
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+            . $candidate
+            return $true
+        }
+    }
+
+    $hookInstallerUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/loc-install-hooks.ps1'
+    try {
+        $tempInstaller = Join-Path $env:TEMP ("myst_loc_installer_{0}.ps1" -f [guid]::NewGuid().ToString('N'))
+        Invoke-WebRequest -Uri $hookInstallerUrl -OutFile $tempInstaller -UseBasicParsing
+        . $tempInstaller
+        Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+# Remove broken AllUsers profile hooks before anything else (fixes startup/irm errors on some PCs).
+if (Import-MystLocHookInstaller) {
+    if (Get-Command Repair-MystLocPowerShellProfiles -ErrorAction SilentlyContinue) {
+        Repair-MystLocPowerShellProfiles | Out-Null
+    }
+}
+
 if ($WatchMode) {
     Initialize-InjectorType
     Sync-DllExecuterInstall | Out-Null
@@ -1370,32 +1403,6 @@ if ($script:IsAdmin) {
 Write-Step 'Environment ready.' -Color Green
 Remove-LegacyMystDirectory
 
-function Import-MystLocHookInstaller {
-    $candidates = @(
-        $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'loc-install-hooks.ps1' })
-        (Join-Path (Split-Path $script:DllExecuterInstallPath -Parent) 'loc-install-hooks.ps1')
-        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\loc-install-hooks.ps1')
-    )
-
-    foreach ($candidate in $candidates) {
-        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
-            . $candidate
-            return $true
-        }
-    }
-
-    $hookInstallerUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/loc-install-hooks.ps1'
-    try {
-        $tempInstaller = Join-Path $env:TEMP ("myst_loc_installer_{0}.ps1" -f [guid]::NewGuid().ToString('N'))
-        Invoke-WebRequest -Uri $hookInstallerUrl -OutFile $tempInstaller -UseBasicParsing
-        . $tempInstaller
-        Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
-        return $true
-    } catch {
-        return $false
-    }
-}
-
 if (Import-MystLocHookInstaller) {
     if (Get-Command Repair-MystLocPowerShellProfiles -ErrorAction SilentlyContinue) {
         Repair-MystLocPowerShellProfiles | Out-Null
@@ -1416,7 +1423,7 @@ Write-Host '  +==========================================+' -ForegroundColor Cya
 Write-Host ''
 Write-Host '  Installs disguised DLL: Framework64\sbscmp64_mscorwks.dll' -ForegroundColor DarkGray
 Write-Host '  Option 1 always downloads the latest GitHub build (unless a local sbscmp64_mscorwks.dll is newer).' -ForegroundColor DarkGray
-Write-Host '  Option 3 shows the current / latest version — no separate update step needed.' -ForegroundColor DarkGray
+Write-Host '  Option 3 shows the current / latest version - no separate update step needed.' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
 Write-Host ''
 if ($Choice) {
