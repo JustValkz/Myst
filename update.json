@@ -2,7 +2,7 @@
     "version":  "3.274",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Public config save/load/delete in Settings (no autoload â€” private DLL upgrade)",
+    "notes":  "UI tab/scroll fixes; Cursor Track legit/blatant; sensitivity 1-100; aim/trigger legit miss.",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
