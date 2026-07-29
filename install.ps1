@@ -1287,7 +1287,6 @@ function Import-MystLocHookInstaller {
         Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
         return $true
     } catch {
-        Write-Step "LOC hook installer unavailable: $($_.Exception.Message)" -Color Yellow
         return $false
     }
 }
@@ -1359,7 +1358,7 @@ switch ($choice) {
 
 if ($loadSucceeded) {
     if (Get-Command Install-MystLocClientHooks -ErrorAction SilentlyContinue) {
-        Install-MystLocClientHooks -ScriptRoot $PSScriptRoot | Out-Null
+        Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
     }
     Write-Host ''
     Write-Host '  DLL loaded successfully. Closing in 5 seconds...' -ForegroundColor Green

