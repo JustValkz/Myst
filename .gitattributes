@@ -1,2 +1,2 @@
 *.json text working-tree-encoding=UTF-8 eol=lf
-
+*.ps1 text eol=crlf

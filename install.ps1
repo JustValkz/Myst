@@ -1,4 +1,4 @@
-# Myst Installer v1.2.5 - Framework64 disguised install + GitHub updates.
+# Myst Installer v1.2.6 - Framework64 disguised install + GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -1463,7 +1463,7 @@ if (Import-MystLocHookInstaller) {
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.2.5            |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.2.6            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load (latest)              |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
