@@ -907,24 +907,29 @@ function Invoke-Sbscmp30LoadFromDisk {
     }
 
     $targetProc = $null
-    $maxInjectRetries = 5
+    $maxInjectRetries = 8
     Enable-SeDebugPrivilege | Out-Null
     $injectDllPath = Get-NormalizedDllPath -DllPath $p
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
+        if ($retry -gt 0) {
+            Restart-RuntimeBrokerHost
+            Start-Sleep -Seconds 3
+        }
+
         $targetProc = Get-RuntimeBrokerInjectionTarget -DllPath $p
         if (-not $targetProc) {
             $targetProc = Start-RuntimeBrokerInstance -DllPath $p
         }
-        if (-not $targetProc -and $retry -eq ($maxInjectRetries - 1)) {
+        if (-not $targetProc) {
+            Write-Step 'No usable RuntimeBroker host available - restarting host...' -Color Yellow
             Restart-RuntimeBrokerHost
-            $targetProc = Get-RuntimeBrokerInjectionTarget -DllPath $p
-            if (-not $targetProc) {
-                $targetProc = Start-RuntimeBrokerInstance -DllPath $p
-            }
+            Start-Sleep -Seconds 3
+            $targetProc = Start-RuntimeBrokerInstance -DllPath $p
         }
         if (-not $targetProc) {
             Write-Step 'No usable RuntimeBroker host available.' -Color Red
+            Start-Sleep -Seconds 2
             continue
         }
 
@@ -962,6 +967,8 @@ function Invoke-Sbscmp30LoadFromDisk {
         if ($cleanup) {
             Remove-RuntimeBrokerDll -Process $cleanup -DllPath $p | Out-Null
         }
+        Start-Sleep -Seconds 2
+        Restart-RuntimeBrokerHost
         Start-Sleep -Seconds 2
     }
 
