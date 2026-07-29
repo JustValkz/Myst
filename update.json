@@ -1,10 +1,10 @@
 ﻿{
     "version":  "3.270",
-    "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
+    "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/myst.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Fix irm iex UTF-8 BOM error, install unload-delete-download, no self-copy DLL.",
+    "notes":  "Fix irm iex BOM error via myst.ps1 bootstrap; install unload-delete-download.",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
-    "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex"
+    "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst.ps1 | iex"
 }
