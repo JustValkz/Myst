@@ -10,7 +10,7 @@
 namespace fflags {
     inline char roblox_version[64] = "version-145f189a6a974303";
 
-    namespace FFlagList {
+    namespace FFlagOffsets {
          inline uintptr_t Pointer = 0x89fbde8;
          inline uintptr_t ToFlag = 0x30;
          inline uintptr_t ToValue = 0xc0;

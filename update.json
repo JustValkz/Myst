@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.299",
+    "version":  "3.301",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Revert triggerbot to v3.268-style: remove instant-fast scan lag, restore wallchecks.",
+    "notes":  "v3.300: FFlag network desync fix, public desync/spinbot, fflags auto-sync, public EXE update loop fix",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
