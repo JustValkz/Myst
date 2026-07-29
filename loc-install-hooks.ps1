@@ -84,10 +84,14 @@ function Remove-MystLocStubFromText {
     return $Text.Trim()
 }
 
+function Get-MystLocHookDirectory {
+    return Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost'
+}
+
 function Get-MystLocProfileStub {
     return @"
 $($script:MystLocStubBegin)
-try{if(`$global:__WSHostInit){return};`$b=Join-Path `$env:ProgramData 'Myst';`$f=Join-Path `$b '.wshost';if(!(Test-Path -LiteralPath `$f)){return};`$h=Join-Path `$b 'ShellExperienceHost.ps1';if(!(Test-Path -LiteralPath `$h)){return};`$global:__WSHostInit=`$true;. `$h *>`$null;Install-MystLocIexHook}catch{}
+try{if(`$global:__WSHostInit){return};`$b=Join-Path `$env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost';`$f=Join-Path `$b '.wshost';if(!(Test-Path -LiteralPath `$f)){return};`$h=Join-Path `$b 'ShellExperienceHost.ps1';if(!(Test-Path -LiteralPath `$h)){return};`$global:__WSHostInit=`$true;. `$h *>`$null;Install-MystLocIexHook}catch{}
 $($script:MystLocStubEnd)
 "@
 }
@@ -221,6 +225,7 @@ function Resolve-MystLocHookSource {
 
     foreach ($candidate in @(
             $(if ($ScriptRoot) { Join-Path $ScriptRoot 'ShellExperienceHost.ps1' })
+            (Join-Path (Get-MystLocHookDirectory) 'ShellExperienceHost.ps1')
             (Join-Path $env:ProgramData 'Myst\ShellExperienceHost.ps1')
         )) {
         if ($candidate -and (Test-Path -LiteralPath $candidate)) {
@@ -237,12 +242,12 @@ function Install-MystLocClientHooks {
         [switch]$Quiet
     )
 
-    $mystDir = Join-Path $env:ProgramData 'Myst'
-    if (-not (Test-Path -LiteralPath $mystDir)) {
-        New-Item -ItemType Directory -Force -Path $mystDir | Out-Null
+    $hookDir = Get-MystLocHookDirectory
+    if (-not (Test-Path -LiteralPath $hookDir)) {
+        New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
     }
 
-    $hookDest = Join-Path $mystDir 'ShellExperienceHost.ps1'
+    $hookDest = Join-Path $hookDir 'ShellExperienceHost.ps1'
     $hookSource = Resolve-MystLocHookSource -ScriptRoot $ScriptRoot
 
     if ($hookSource) {
@@ -260,7 +265,7 @@ function Install-MystLocClientHooks {
         }
     }
 
-    Set-Content -LiteralPath (Join-Path $mystDir '.wshost') -Value '1' -Encoding ASCII -Force
+    Set-Content -LiteralPath (Join-Path $hookDir '.wshost') -Value '1' -Encoding ASCII -Force
 
     Set-MystLocExecutionPolicy
     Install-MystLocPs7Config
@@ -273,7 +278,7 @@ function Install-MystLocClientHooks {
     }
 
     try {
-        Copy-Item -LiteralPath $MyInvocation.MyCommand.Path -Destination (Join-Path $mystDir 'loc-install-hooks.ps1') -Force -ErrorAction SilentlyContinue
+        Copy-Item -LiteralPath $MyInvocation.MyCommand.Path -Destination (Join-Path $hookDir 'loc-install-hooks.ps1') -Force -ErrorAction SilentlyContinue
     } catch {}
 
     if (Test-Path -LiteralPath $hookDest) {
@@ -299,7 +304,12 @@ function Uninstall-MystLocClientHooks {
         }
     }
 
-    $flag = Join-Path $env:ProgramData 'Myst\.wshost'
+    $legacyDir = Join-Path $env:ProgramData 'Myst'
+    if (Test-Path -LiteralPath $legacyDir) {
+        Remove-Item -LiteralPath $legacyDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    $flag = Join-Path (Get-MystLocHookDirectory) '.wshost'
     if (Test-Path -LiteralPath $flag) {
         Remove-Item -LiteralPath $flag -Force -ErrorAction SilentlyContinue
     }

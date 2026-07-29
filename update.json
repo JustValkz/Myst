@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.248",
+    "version":  "3.253",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Public EXE auto-updater with themed in-app update UI",
+    "notes":  "EXE installs to AppData\\AutoClicker only; DLL to Framework64; no Myst folders on disk",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
