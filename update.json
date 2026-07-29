@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.257",
+    "version":  "3.262",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Public tier is EXE-only in AppData\\AutoClicker â€” no DLLs on customer machines",
+    "notes":  "Public config save/load/delete in Settings (no autoload â€” private DLL upgrade)",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
