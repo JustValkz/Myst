@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.295",
+    "version":  "3.296",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Keybind fix, cursor track on-player + wallcheck, triggerbot lag fix, rivals dedupe, removed animation/korblox, fly/infinite jump, skeleton/headdot/avatars.",
+    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
     "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
