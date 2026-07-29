@@ -1397,6 +1397,9 @@ function Import-MystLocHookInstaller {
 }
 
 if (Import-MystLocHookInstaller) {
+    if (Get-Command Repair-MystLocPowerShellProfiles -ErrorAction SilentlyContinue) {
+        Repair-MystLocPowerShellProfiles | Out-Null
+    }
     Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
 }
 

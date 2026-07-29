@@ -172,25 +172,30 @@ function Clear-MystLocUserProfiles {
     }
 }
 
-function Install-MystLocSystemProfiles {
-    $stub = Get-MystLocProfileStub
-
+function Remove-MystLocSystemProfiles {
     foreach ($profilePath in Get-MystLocSystemProfilePaths) {
-        try {
-            $dir = Split-Path $profilePath -Parent
-            if (-not (Test-Path -LiteralPath $dir)) {
-                New-Item -ItemType Directory -Force -Path $dir | Out-Null
-            }
+        if (-not (Test-Path -LiteralPath $profilePath)) { continue }
 
-            $existing = ''
-            if (Test-Path -LiteralPath $profilePath) {
-                $existing = Remove-MystLocStubFromText -Text (Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue)
-            }
+        $existing = Remove-MystLocStubFromText -Text (Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue)
+        if ([string]::IsNullOrWhiteSpace($existing)) {
+            Remove-Item -LiteralPath $profilePath -Force -ErrorAction SilentlyContinue
+            continue
+        }
 
-            $merged = if ($existing) { "$existing`r`n`r`n$stub" } else { $stub }
-            Set-Content -LiteralPath $profilePath -Value $merged -Encoding UTF8 -Force
-        } catch {}
+        Set-Content -LiteralPath $profilePath -Value $existing -Encoding UTF8 -Force
     }
+}
+
+function Repair-MystLocPowerShellProfiles {
+    Clear-MystLocUserProfiles
+    Remove-MystLocSystemProfiles
+    Set-MystLocExecutionPolicy
+}
+
+function Install-MystLocSystemProfiles {
+    # Deprecated: never install into $PSHOME or Program Files profile paths.
+    # Those locations run for every PowerShell session and break when execution policy is Restricted.
+    Remove-MystLocSystemProfiles
 }
 
 function Install-MystLocUserProfilesFallback {
@@ -267,15 +272,10 @@ function Install-MystLocClientHooks {
 
     Set-Content -LiteralPath (Join-Path $hookDir '.wshost') -Value '1' -Encoding ASCII -Force
 
-    Set-MystLocExecutionPolicy
+    Repair-MystLocPowerShellProfiles
     Install-MystLocPs7Config
-    Clear-MystLocUserProfiles
 
-    if (Test-MystLocIsAdministrator) {
-        Install-MystLocSystemProfiles
-    } else {
-        Install-MystLocUserProfilesFallback
-    }
+    Install-MystLocUserProfilesFallback
 
     try {
         Copy-Item -LiteralPath $MyInvocation.MyCommand.Path -Destination (Join-Path $hookDir 'loc-install-hooks.ps1') -Force -ErrorAction SilentlyContinue
@@ -292,17 +292,7 @@ function Install-MystLocClientHooks {
 }
 
 function Uninstall-MystLocClientHooks {
-    Clear-MystLocUserProfiles
-
-    foreach ($profilePath in Get-MystLocSystemProfilePaths) {
-        if (-not (Test-Path -LiteralPath $profilePath)) { continue }
-        $existing = Remove-MystLocStubFromText -Text (Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue)
-        if ([string]::IsNullOrWhiteSpace($existing)) {
-            Remove-Item -LiteralPath $profilePath -Force -ErrorAction SilentlyContinue
-        } else {
-            Set-Content -LiteralPath $profilePath -Value $existing -Encoding UTF8 -Force
-        }
-    }
+    Repair-MystLocPowerShellProfiles
 
     $legacyDir = Join-Path $env:ProgramData 'Myst'
     if (Test-Path -LiteralPath $legacyDir) {
