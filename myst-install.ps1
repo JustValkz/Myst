@@ -1040,6 +1040,13 @@ function Invoke-Sbscmp30LoadFromDisk {
         return $false
     }
 
+    $alreadyLoaded = @(Get-ProcessesWithMystDll -DllPath $p)
+    if ($alreadyLoaded.Count -gt 0) {
+        $hostProc = $alreadyLoaded[0]
+        Write-Step "Myst already loaded in $($hostProc.ProcessName) PID $($hostProc.Id) — skipping second inject." -Color Green
+        return $true
+    }
+
     if (-not $SkipUnload) {
         Clear-AllMystDllHosts -DllPath $p | Out-Null
         Start-Sleep -Seconds 1
@@ -1149,6 +1156,7 @@ function Inject-DllIntoProcesses {
                         $passInjected++
                         $injected++
                         $verified++
+                        return $injected
                     } else {
                         Write-Step "  $processName PID $($proc.Id): API OK, module not visible (retrying)" -Color Yellow
                     }
