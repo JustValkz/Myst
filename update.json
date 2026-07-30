@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.334",
+    "version":  "3.336",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Fix wallcheck cache shrink, head wallchecks, HBE/teamcheck, trigger fire key, loc repair",
+    "notes":  "Fire key mouse bind+delivery, teamcheck, HBE wallcheck, session logs",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
