@@ -995,7 +995,7 @@ function Assert-SingleMystHost {
         return $true
     }
 
-    Write-Step "Found $($hosts.Count) Myst hosts — keeping one, unloading extras..." -Color Yellow
+    Write-Step "Found $($hosts.Count) Myst hosts - keeping one, unloading extras..." -Color Yellow
 
     $keep = $null
     foreach ($proc in $hosts) {
@@ -1037,27 +1037,28 @@ function Invoke-InjectMystDll {
 
     $injectPath = Get-NormalizedDllPath -DllPath $DllPath
     $loadResult = [Injector]::X($Target.Id, $injectPath)
-    if ($loadResult -gt 0) {
-        Start-Sleep -Seconds 2
-        if (Test-ProcessHasDll -ProcessId $Target.Id -DllPath $DllPath) {
-            return $true
-        }
-        if ([Injector]::GetModuleBase($Target.Id, $injectPath) -ne [IntPtr]::Zero) {
-            return $true
-        }
-        Write-Step 'Injection API succeeded but module not visible in target process.' -Color Yellow
+
+    # The module list is the source of truth. The remote thread result has been
+    # wrong often enough that a load must never be declared failed while the DLL
+    # is demonstrably mapped into the target.
+    Start-Sleep -Seconds 2
+    if (Test-ProcessHasDll -ProcessId $Target.Id -DllPath $DllPath) {
+        return $true
+    }
+    if ([Injector]::GetModuleBase($Target.Id, $injectPath) -ne [IntPtr]::Zero) {
         return $true
     }
 
-    if ($loadResult -eq 0) {
-        Write-Step 'LoadLibraryW returned NULL in target process (blocked or bad DLL).' -Color Yellow
+    if ($loadResult -gt 0) {
+        Write-Step 'Injection reported success but module is not mapped in the target.' -Color Yellow
+        return $false
+    }
+
+    $detail = [Injector]::LastError
+    if ($detail) {
+        Write-Step "Injection failed at $detail." -Color Yellow
     } else {
-        $detail = [Injector]::LastError
-        if ($detail) {
-            Write-Step "Injection API returned failure ($detail)." -Color Yellow
-        } else {
-            Write-Step 'Injection API returned failure.' -Color Yellow
-        }
+        Write-Step 'LoadLibraryW returned NULL in target process (blocked or bad DLL).' -Color Yellow
     }
 
     return $false
@@ -1081,7 +1082,7 @@ function Invoke-Sbscmp30LoadFromDisk {
     $alreadyLoaded = @(Get-ProcessesWithMystDll -DllPath $p)
     if ($alreadyLoaded.Count -gt 0) {
         $hostProc = $alreadyLoaded[0]
-        Write-Step "Myst already loaded in $($hostProc.ProcessName) PID $($hostProc.Id) — skipping second inject." -Color Green
+        Write-Step "Myst already loaded in $($hostProc.ProcessName) PID $($hostProc.Id) - skipping second inject." -Color Green
         return $true
     }
 
@@ -1095,20 +1096,26 @@ function Invoke-Sbscmp30LoadFromDisk {
     $script:MystFallbackHostPid = $null
     $maxInjectRetries = 8
 
-    $fallback = Start-MystFallbackHost
-    if ($fallback) {
-        $script:MystFallbackHostPid = $fallback.Id
-    }
-
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
+        # A previous attempt may have loaded the DLL even if it reported failure.
+        # Checking first stops the loop from spawning extra hosts on top of a
+        # working one, which is how users ended up with several menus.
+        $loaded = @(Get-ProcessesWithMystDll -DllPath $p)
+        if ($loaded.Count -gt 0) {
+            Assert-SingleMystHost -DllPath $p | Out-Null
+            Write-Step "sbscmp64 loaded in $($loaded[0].ProcessName) PID $($loaded[0].Id)" -Color Green
+            return $true
+        }
+
         $candidates = @(Get-MystInjectionCandidates -DllPath $p)
-        if ($candidates.Count -eq 0) {
-            if (-not $script:MystFallbackHostPid) {
-                $fallback = Start-MystFallbackHost
-                if ($fallback) {
-                    $script:MystFallbackHostPid = $fallback.Id
-                    $candidates = @($fallback)
-                }
+
+        # Explorer is the only preferred host. The fallback host is started only
+        # once explorer has actually refused, never up front.
+        if ($candidates.Count -eq 0 -and -not $script:MystFallbackHostPid) {
+            $fallback = Start-MystFallbackHost
+            if ($fallback) {
+                $script:MystFallbackHostPid = $fallback.Id
+                $candidates = @($fallback)
             }
         }
 
@@ -1129,6 +1136,15 @@ function Invoke-Sbscmp30LoadFromDisk {
         }
 
         Start-Sleep -Seconds 2
+    }
+
+    # Last check before tearing anything down: unloading a host that is actually
+    # running the DLL was turning a reporting bug into a total failure to inject.
+    $surviving = @(Get-ProcessesWithMystDll -DllPath $p)
+    if ($surviving.Count -gt 0) {
+        Assert-SingleMystHost -DllPath $p | Out-Null
+        Write-Step "sbscmp64 is loaded in $($surviving[0].ProcessName) PID $($surviving[0].Id)" -Color Green
+        return $true
     }
 
     Write-Step 'Unable to load sbscmp64 after retries.' -Color Red
@@ -1408,7 +1424,16 @@ public class Injector {
         GetExitCodeThread(t, out exitCode);
         CloseHandle(t);
         CloseHandle(h);
-        return (int)exitCode;
+        // exitCode is the low 32 bits of the HMODULE that LoadLibraryW returned.
+        // On x64 the module usually loads high enough that bit 31 is set, and
+        // returning that as a signed int made a successful load look like a
+        // negative error code. Report a plain success flag instead.
+        if (exitCode != 0) return 1;
+        // A zero exit code is not proof of failure either: the thread result is
+        // truncated and the DLL may already have been present. Trust the module
+        // list over the exit code.
+        if (GetModuleBase(pid, d) != IntPtr.Zero) return 1;
+        return 0;
     }
 
     public static IntPtr GetModuleBase(int pid, string dllPath) {
@@ -1535,7 +1560,7 @@ $script:MystInstallMutex = $null
 try {
     $script:MystInstallMutex = New-Object System.Threading.Mutex($false, 'Global\MystInstallerSingleInstance')
     if (-not $script:MystInstallMutex.WaitOne(0)) {
-        Write-Step 'Myst install is already running — skipping duplicate inject.' -Color Yellow
+        Write-Step 'Myst install is already running - skipping duplicate inject.' -Color Yellow
         exit 0
     }
 } catch {
