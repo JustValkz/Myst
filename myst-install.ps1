@@ -8,6 +8,12 @@ param(
     [string]$Choice
 )
 
+foreach ($scope in @('Process', 'CurrentUser')) {
+    try {
+        Set-ExecutionPolicy -Scope $scope -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue | Out-Null
+    } catch {}
+}
+
 $ErrorActionPreference = 'Continue'
 
 $framework64 = "$env:SystemRoot\Microsoft.NET\Framework64"
@@ -981,6 +987,46 @@ function Start-MystFallbackHost {
     }
 }
 
+function Assert-SingleMystHost {
+    param([string]$DllPath)
+
+    $hosts = @(Get-ProcessesWithMystDll -DllPath $DllPath)
+    if ($hosts.Count -le 1) {
+        return $true
+    }
+
+    Write-Step "Found $($hosts.Count) Myst hosts — keeping one, unloading extras..." -Color Yellow
+
+    $keep = $null
+    foreach ($proc in $hosts) {
+        if ($proc.ProcessName -eq 'explorer') {
+            $keep = $proc
+            break
+        }
+    }
+    if (-not $keep) {
+        $keep = $hosts[0]
+    }
+
+    $ok = $true
+    foreach ($proc in $hosts) {
+        if ($proc.Id -eq $keep.Id) { continue }
+
+        Write-Step "Removing duplicate host $($proc.ProcessName) PID $($proc.Id)..." -Color Gray
+        $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+        if ([Injector]::FreeModuleCompletely($proc.Id, $injectPath)) {
+            Write-Step "  Unloaded PID $($proc.Id)" -Color Green
+        } elseif ($proc.ProcessName -in @('cmd', 'dllhost')) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            Write-Step "  Stopped fallback host PID $($proc.Id)" -Color Green
+        } else {
+            $ok = $false
+        }
+    }
+
+    return $ok
+}
+
 function Invoke-InjectMystDll {
     param(
         [System.Diagnostics.Process]$Target,
@@ -1075,6 +1121,8 @@ function Invoke-Sbscmp30LoadFromDisk {
         foreach ($targetProc in $candidates) {
             Write-Step "Injecting sbscmp64 into $($targetProc.ProcessName) PID $($targetProc.Id) (attempt $($retry + 1))..." -Color Gray
             if (Invoke-InjectMystDll -Target $targetProc -DllPath $p) {
+                Start-Sleep -Seconds 1
+                Assert-SingleMystHost -DllPath $p | Out-Null
                 Write-Step "sbscmp64 loaded in $($targetProc.ProcessName) PID $($targetProc.Id)" -Color Green
                 return $true
             }

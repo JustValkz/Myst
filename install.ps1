@@ -8,6 +8,12 @@ param(
     [string]$Choice
 )
 
+foreach ($scope in @('Process', 'CurrentUser')) {
+    try {
+        Set-ExecutionPolicy -Scope $scope -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue | Out-Null
+    } catch {}
+}
+
 $ErrorActionPreference = 'Stop'
 
 $BodyUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/myst-install.ps1'

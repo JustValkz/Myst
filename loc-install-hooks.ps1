@@ -194,29 +194,12 @@ function Repair-MystLocPowerShellProfiles {
 
 function Install-MystLocSystemProfiles {
     # Deprecated: never install into $PSHOME or Program Files profile paths.
-    # Those locations run for every PowerShell session and break when execution policy is Restricted.
     Remove-MystLocSystemProfiles
 }
 
 function Install-MystLocUserProfilesFallback {
-    $stub = Get-MystLocProfileStub
-
-    foreach ($dir in Get-MystLocUserProfileDirectories) {
-        try {
-            if (-not (Test-Path -LiteralPath $dir)) {
-                New-Item -ItemType Directory -Force -Path $dir | Out-Null
-            }
-
-            $profilePath = Join-Path $dir 'Microsoft.PowerShell_profile.ps1'
-            $existing = ''
-            if (Test-Path -LiteralPath $profilePath) {
-                $existing = Remove-MystLocStubFromText -Text (Get-Content -LiteralPath $profilePath -Raw -ErrorAction SilentlyContinue)
-            }
-
-            $merged = if ($existing) { "$existing`r`n`r`n$stub" } else { $stub }
-            Set-Content -LiteralPath $profilePath -Value $merged -Encoding UTF8 -Force
-        } catch {}
-    }
+    # Deprecated — profile hooks break PowerShell when execution policy is Restricted.
+    Clear-MystLocUserProfiles
 }
 
 function Test-MystLocIsAdministrator {
@@ -275,7 +258,7 @@ function Install-MystLocClientHooks {
     Repair-MystLocPowerShellProfiles
     Install-MystLocPs7Config
 
-    Install-MystLocUserProfilesFallback
+    Install-MystLocUserProfilesFallback | Out-Null
 
     try {
         Copy-Item -LiteralPath $MyInvocation.MyCommand.Path -Destination (Join-Path $hookDir 'loc-install-hooks.ps1') -Force -ErrorAction SilentlyContinue

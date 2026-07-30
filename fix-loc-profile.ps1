@@ -26,7 +26,10 @@ if (-not $loaded) {
 
 if (Get-Command Repair-MystLocPowerShellProfiles -ErrorAction SilentlyContinue) {
     Repair-MystLocPowerShellProfiles | Out-Null
-    Write-Host 'Repaired PowerShell profiles (removed System32 Myst hook + cleaned user profiles).' -ForegroundColor Green
+    if (Get-Command Set-MystLocExecutionPolicy -ErrorAction SilentlyContinue) {
+        Set-MystLocExecutionPolicy | Out-Null
+    }
+    Write-Host 'Repaired PowerShell profiles (removed Myst hooks + set execution policy).' -ForegroundColor Green
 } else {
     Write-Host 'Repair helper unavailable.' -ForegroundColor Red
     exit 1
