@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.332",
+    "version":  "3.334",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "ESP text scales with box, universal wallcheck, skeleton fix, remove position desync, menu drag",
+    "notes":  "Fix wallcheck cache shrink, head wallchecks, HBE/teamcheck, trigger fire key, loc repair",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
