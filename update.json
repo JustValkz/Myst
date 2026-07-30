@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.338",
+    "version":  "3.340",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Triggerbot LMB/RMB fire fix, ESP flicker, FFA teamcheck",
+    "notes":  "v3.332 triggerbot+ESP stability, cursor track body lock, wallcheck persist",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
