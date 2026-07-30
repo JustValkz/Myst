@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.367",
+    "version":  "3.369",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "v3.366 revert HBE/wallcheck to v3.332 (MVS excepted)",
+    "notes":  "v3.368 rebuild wallcheck: keep map, linear ray fallback, descend map Models",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
