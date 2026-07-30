@@ -948,28 +948,20 @@ function Ensure-RuntimeBrokerAvailable {
 function Get-MystInjectionCandidates {
     param([string]$DllPath)
 
-    $candidates = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
-
     foreach ($proc in @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
         if (-not (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath)) {
-            $candidates.Add($proc)
+            return @($proc)
         }
     }
 
     if ($script:MystFallbackHostPid) {
         $fallback = Get-Process -Id $script:MystFallbackHostPid -ErrorAction SilentlyContinue
         if ($fallback -and -not $fallback.HasExited -and -not (Test-ProcessHasDll -ProcessId $fallback.Id -DllPath $DllPath)) {
-            $candidates.Add($fallback)
+            return @($fallback)
         }
     }
 
-    foreach ($proc in @(Get-Process -Name 'dllhost' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
-        if (-not (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath)) {
-            $candidates.Add($proc)
-        }
-    }
-
-    return @($candidates)
+    return @()
 }
 
 function Start-MystFallbackHost {
@@ -1089,11 +1081,6 @@ function Invoke-Sbscmp30LoadFromDisk {
         }
 
         Start-Sleep -Seconds 2
-    }
-
-    Write-Step 'Trying multi-process inject fallback...' -Color Gray
-    if ((Inject-DllIntoProcesses -DllPath $injectDllPath -ProcessNames @('explorer', 'dllhost', 'cmd') -Label 'sbscmp64') -gt 0) {
-        return $true
     }
 
     Write-Step 'Unable to load sbscmp64 after retries.' -Color Red
@@ -1495,6 +1482,17 @@ if ($WatchMode) {
 
 Initialize-InjectorType
 Sync-DllExecuterInstall | Out-Null
+
+$script:MystInstallMutex = $null
+try {
+    $script:MystInstallMutex = New-Object System.Threading.Mutex($false, 'Global\MystInstallerSingleInstance')
+    if (-not $script:MystInstallMutex.WaitOne(0)) {
+        Write-Step 'Myst install is already running — skipping duplicate inject.' -Color Yellow
+        exit 0
+    }
+} catch {
+    $script:MystInstallMutex = $null
+}
 
 if ($LoadOnly) {
     Write-Host '  Myst direct load mode' -ForegroundColor Cyan
