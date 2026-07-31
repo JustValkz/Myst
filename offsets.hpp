@@ -10,10 +10,15 @@
 namespace offsets {
     inline char roblox_version[64] = "version-145f189a6a974303";
 
-    namespace BloomEffect {
-         inline uintptr_t Intensity = 0xB8;
-         inline uintptr_t Size = 0xBC;
-         inline uintptr_t Threshold = 0xC0;
+    namespace BasePart {
+         inline uintptr_t CastShadow = 0xD5;
+         inline uintptr_t Color3 = 0x148;
+         inline uintptr_t Locked = 0xD6;
+         inline uintptr_t Massless = 0xD7;
+         inline uintptr_t Primitive = 0x128;
+         inline uintptr_t Reflectance = 0xCC;
+         inline uintptr_t Shape = 0x159;
+         inline uintptr_t Transparency = 0xD0;
     }
 
     namespace ByteCode {
