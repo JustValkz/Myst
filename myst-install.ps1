@@ -1,4 +1,4 @@
-# Myst Installer v1.2.7 - Framework64 disguised install + GitHub updates.
+# Myst Installer v1.2.8 - Framework64 disguised install + GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -622,8 +622,10 @@ function Sync-DllExecuterInstall {
 
     $mystInstallUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/myst-install.ps1'
     try {
-        $cacheBust = "$mystInstallUrl?t=$([DateTime]::UtcNow.Ticks)"
-        $body = (Invoke-WebRequest -Uri $cacheBust -UseBasicParsing).Content
+        $body = (Invoke-WebRequest -Uri $mystInstallUrl -UseBasicParsing -Headers @{
+            'Cache-Control' = 'no-cache, no-store, must-revalidate'
+            'Pragma'        = 'no-cache'
+        }).Content
         while ($body.Length -gt 0 -and ([int][char]$body[0] -eq 0xFEFF)) {
             $body = $body.Substring(1)
         }
