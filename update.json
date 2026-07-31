@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.397",
+    "version":  "3.399",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "v3.396 MVS camera-only wallcheck via physics primitives",
+    "notes":  "v3.398 MVS fix HBE/teamcheck filters, place wallcheck rescan",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
