@@ -1,6 +1,6 @@
 /*
  * Auto-converted from valkz-fflag-dumper (no imtheo)
- * Roblox Version: version-145f189a6a974303
+ * Roblox Version: unknown
  */
 
 #pragma once
@@ -8,7 +8,7 @@
 
 // clang-format off
 namespace fflags {
-    inline char roblox_version[64] = "version-145f189a6a974303";
+    inline char roblox_version[64] = "unknown";
 
     namespace FFlagOffsets {
          inline uintptr_t Pointer = 0x89fbde8;

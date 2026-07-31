@@ -1080,6 +1080,41 @@ function Invoke-InjectMystDll {
     return $false
 }
 
+function Invoke-EnsureMystRuntimeStarted {
+    param(
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    if (-not $Target -or $Target.HasExited) { return $false }
+
+    if (-not (Invoke-MystStartExport -Target $Target -DllPath $DllPath)) {
+        Write-Step 'MystStart export failed — overlay will not run.' -Color Red
+        return $false
+    }
+
+    Start-Sleep -Milliseconds 400
+    if (Test-MystOverlayStarted) {
+        return $true
+    }
+
+    Write-Step 'MystStart invoked; overlay still warming up.' -Color Yellow
+    return $true
+}
+
+function Invoke-MystRequestStopExport {
+    param(
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    if (-not $Target -or $Target.HasExited) { return $false }
+
+    Initialize-MystInjectorType
+    $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+    return [MystInjector]::InvokeRemoteExport($Target.Id, $injectPath, 'MystRequestStop')
+}
+
 function Invoke-Sbscmp30LoadFromDisk {
     param([switch]$SkipUnload)
 
@@ -1098,9 +1133,16 @@ function Invoke-Sbscmp30LoadFromDisk {
     $alreadyLoaded = @(Get-ProcessesWithMystDll -DllPath $p)
     if ($alreadyLoaded.Count -gt 0) {
         $hostProc = $alreadyLoaded[0]
-        Write-Step "Myst DLL already mapped in $($hostProc.ProcessName) PID $($hostProc.Id) - restarting host..." -Color Yellow
-        Invoke-MystStartExport -Target $hostProc -DllPath $p | Out-Null
-        return $true
+        Write-Step "Myst DLL already mapped in $($hostProc.ProcessName) PID $($hostProc.Id) - ensuring runtime..." -Color Yellow
+        if (Test-MystOverlayStarted) {
+            Write-Step 'Myst overlay already running.' -Color Green
+            return $true
+        }
+
+        Invoke-MystRequestStopExport -Target $hostProc -DllPath $p | Out-Null
+        Start-Sleep -Milliseconds 600
+        Clear-AllMystDllHosts -DllPath $p | Out-Null
+        Start-Sleep -Seconds 1
     }
 
     if (-not $SkipUnload) {
@@ -1120,7 +1162,7 @@ function Invoke-Sbscmp30LoadFromDisk {
         $loaded = @(Get-ProcessesWithMystDll -DllPath $p)
         if ($loaded.Count -gt 0) {
             Assert-SingleMystHost -DllPath $p | Out-Null
-            Invoke-MystStartExport -Target $loaded[0] -DllPath $p | Out-Null
+            Invoke-EnsureMystRuntimeStarted -Target $loaded[0] -DllPath $p | Out-Null
             Write-Step "sbscmp64 loaded in $($loaded[0].ProcessName) PID $($loaded[0].Id)" -Color Green
             return $true
         }
@@ -1148,7 +1190,7 @@ function Invoke-Sbscmp30LoadFromDisk {
             if (Invoke-InjectMystDll -Target $targetProc -DllPath $p) {
                 Start-Sleep -Seconds 1
                 Assert-SingleMystHost -DllPath $p | Out-Null
-                Invoke-MystStartExport -Target $targetProc -DllPath $p | Out-Null
+                Invoke-EnsureMystRuntimeStarted -Target $targetProc -DllPath $p | Out-Null
                 Write-Step "sbscmp64 loaded in $($targetProc.ProcessName) PID $($targetProc.Id)" -Color Green
                 return $true
             }
@@ -1162,6 +1204,7 @@ function Invoke-Sbscmp30LoadFromDisk {
     $surviving = @(Get-ProcessesWithMystDll -DllPath $p)
     if ($surviving.Count -gt 0) {
         Assert-SingleMystHost -DllPath $p | Out-Null
+        Invoke-EnsureMystRuntimeStarted -Target $surviving[0] -DllPath $p | Out-Null
         Write-Step "sbscmp64 is loaded in $($surviving[0].ProcessName) PID $($surviving[0].Id)" -Color Green
         return $true
     }
