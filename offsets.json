@@ -4,22 +4,9 @@
     "author": "Valkz (JustValkz)",
     "github": "https://github.com/JustValkz/Myst",
     "roblox_version": "version-145f189a6a974303",
-    "total_offsets": 261
+    "total_offsets": 300
   },
   "offsets": {
-    "Atmosphere": {
-      "Color": 184,
-      "Decay": 196,
-      "Density": 208,
-      "Glare": 212,
-      "Haze": 216,
-      "Offset": 220
-    },
-    "Attribute": {
-      "Key": 0,
-      "Size": 88,
-      "Value": 24
-    },
     "BasePart": {
       "CastShadow": 213,
       "Color3": 328,
@@ -41,10 +28,12 @@
     },
     "Camera": {
       "CFrame": 216,
+      "CameraSubject": 200,
       "CameraType": 324,
       "FieldOfView": 320,
       "Position": 252,
       "Rotation": 216,
+      "Viewport": 736,
       "ViewportSize": 712
     },
     "CharacterMesh": {
@@ -92,6 +81,40 @@
       "SizeConstraint": 1440,
       "Visible": 1453,
       "ZIndex": 1444
+    },
+    "Humanoid": {
+      "AutoJumpEnabled": 468,
+      "AutoRotate": 469,
+      "AutomaticScalingEnabled": 470,
+      "BreakJointsOnDeath": 471,
+      "CameraOffset": 296,
+      "DisplayDistanceType": 384,
+      "EvaluateStateMachine": 472,
+      "Health": 400,
+      "HealthDisplayDistance": 392,
+      "HealthDisplayType": 396,
+      "HipHeight": 404,
+      "HumanoidState": 2200,
+      "HumanoidStateID": 32,
+      "Jump": 464,
+      "JumpHeight": 416,
+      "JumpPower": 420,
+      "MaxHealth": 424,
+      "MaxSlopeAngle": 428,
+      "NameDisplayDistance": 432,
+      "NameOcclusion": 436,
+      "PlatformStand": 476,
+      "RequiresNeck": 477,
+      "RigType": 61,
+      "SeatPart": 264,
+      "Sit": 478,
+      "TargetPoint": 332,
+      "UseJumpPower": 480,
+      "WalkSpeed": 464,
+      "WalkSpeedCheck": 956,
+      "WalkToPoint": 356,
+      "Walkspeed": 464,
+      "WalkspeedCheck": 956
     },
     "InputObject": {
       "MousePosition": 212
@@ -164,22 +187,28 @@
       "MeshId": 680,
       "TextureId": 728
     },
+    "Misc": {
+      "AnimationId": 192
+    },
     "ModuleScript": {
       "Bytecode": 312,
       "Hash": 328
     },
     "MouseService": {
       "InputObject": 256,
-      "InputObject2": 240
+      "InputObject2": 240,
+      "MousePosition": 212
     },
     "Player": {
       "AccountAge": 860,
       "Character": 664,
       "DisplayName": 312,
       "HealthDisplayDistance": 912,
+      "LocalPlayer": 304,
       "LocaleId": 1856,
       "MaxZoomDistance": 872,
       "MinZoomDistance": 876,
+      "ModelInstance": 664,
       "NameDisplayDistance": 928,
       "Team": 728,
       "TeamColor": 940,
@@ -192,12 +221,15 @@
       "AssemblyAngularVelocity": 260,
       "AssemblyLinearVelocity": 248,
       "CFrame": 200,
+      "Flags": 438,
       "Material": 574,
       "Orientation": 200,
+      "Owner": 520,
       "Position": 236,
       "PrimitiveFlags": 438,
       "Rotation": 200,
-      "Size": 440
+      "Size": 440,
+      "Validate": 6
     },
     "PrimitiveFlags": {
       "Anchored": 2,
@@ -217,6 +249,9 @@
     "RenderView": {
       "LightingValid": 552,
       "SkyboxValid": 653
+    },
+    "Seat": {
+      "Occupant": 432
     },
     "Sky": {
       "MoonAngularSize": 580,
@@ -238,6 +273,9 @@
       "Scale": 196,
       "TextureId": 296
     },
+    "StatsItem": {
+      "Value": 184
+    },
     "TaskScheduler": {
       "JobEnd": 208,
       "JobName": 2272,
@@ -245,6 +283,7 @@
       "Pointer": 139090144
     },
     "Team": {
+      "BrickColor": 184,
       "TeamColor": 184
     },
     "Terrain": {
@@ -323,6 +362,7 @@
       "TurnSpeed": 480
     },
     "VisualEngine": {
+      "Dimensions": 2784,
       "FakeDataModel": 2752,
       "Pointer": 142708576,
       "RenderView": 3056,
@@ -330,13 +370,16 @@
     },
     "Workspace": {
       "CurrentCamera": 1176,
+      "Raycast": 0,
       "ReadOnlyGravity": 2480,
       "World": 1008
     },
     "World": {
+      "FallenPartsDestroyHeight": 520,
       "Gravity": 528,
       "Primitives": 648,
-      "WorldSteps": 1792
+      "WorldSteps": 1792,
+      "worldStepsPerSec": 1792
     },
     "WorldRoot": {
       "FindPartOnRayDescriptorRva": 101830784,
