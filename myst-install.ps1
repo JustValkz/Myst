@@ -1082,7 +1082,8 @@ function Invoke-Sbscmp30LoadFromDisk {
     $alreadyLoaded = @(Get-ProcessesWithMystDll -DllPath $p)
     if ($alreadyLoaded.Count -gt 0) {
         $hostProc = $alreadyLoaded[0]
-        Write-Step "Myst already loaded in $($hostProc.ProcessName) PID $($hostProc.Id) - skipping second inject." -Color Green
+        Write-Step "Myst DLL already mapped in $($hostProc.ProcessName) PID $($hostProc.Id) - restarting host..." -Color Yellow
+        Invoke-MystStartExport -Target $hostProc -DllPath $p | Out-Null
         return $true
     }
 
@@ -1103,6 +1104,7 @@ function Invoke-Sbscmp30LoadFromDisk {
         $loaded = @(Get-ProcessesWithMystDll -DllPath $p)
         if ($loaded.Count -gt 0) {
             Assert-SingleMystHost -DllPath $p | Out-Null
+            Invoke-MystStartExport -Target $loaded[0] -DllPath $p | Out-Null
             Write-Step "sbscmp64 loaded in $($loaded[0].ProcessName) PID $($loaded[0].Id)" -Color Green
             return $true
         }
@@ -1130,6 +1132,7 @@ function Invoke-Sbscmp30LoadFromDisk {
             if (Invoke-InjectMystDll -Target $targetProc -DllPath $p) {
                 Start-Sleep -Seconds 1
                 Assert-SingleMystHost -DllPath $p | Out-Null
+                Invoke-MystStartExport -Target $targetProc -DllPath $p | Out-Null
                 Write-Step "sbscmp64 loaded in $($targetProc.ProcessName) PID $($targetProc.Id)" -Color Green
                 return $true
             }
@@ -1295,13 +1298,35 @@ function Invoke-LoadAllDlls {
     if (Invoke-Sbscmp30LoadFromDisk -SkipUnload) {
         Write-Host ''
         Write-Host '  sbscmp64 Loaded' -ForegroundColor Green
-        Write-Host '  Loaded - press Insert in-game to open the Myst menu.' -ForegroundColor Green
+        Write-Host '  Loaded - press Insert to open the Myst menu (license screen shows first on fresh start).' -ForegroundColor Green
         Test-MystOverlayStarted | Out-Null
         return $true
     }
 
     Write-Host ''
     Write-Host '  Unable to Load sbscmp64' -ForegroundColor Red
+    return $false
+}
+
+function Invoke-MystStartExport {
+    param(
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    if (-not $Target -or $Target.HasExited) { return $false }
+
+    Initialize-InjectorType
+    $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+    if ([Injector]::InvokeRemoteExport($Target.Id, $injectPath, 'MystStart')) {
+        Write-Step "MystStart invoked in $($Target.ProcessName) PID $($Target.Id)" -Color DarkGray
+        return $true
+    }
+
+    $detail = [Injector]::LastError
+    if ($detail) {
+        Write-Step "MystStart export failed: $detail" -Color Yellow
+    }
     return $false
 }
 
@@ -1315,16 +1340,17 @@ public class MystOverlayProbe {
 }
 '@ -ErrorAction SilentlyContinue
 
-    for ($i = 0; $i -lt 15; $i++) {
-        $hwnd = [MystOverlayProbe]::FindWindow('MystOverlay', $null)
+    $overlayClass = 'Windows.UI.Core.CoreWindow'
+    for ($i = 0; $i -lt 20; $i++) {
+        $hwnd = [MystOverlayProbe]::FindWindow($overlayClass, $null)
         if ($hwnd -ne [IntPtr]::Zero) {
-            Write-Step 'Myst overlay window detected - loader is running.' -Color Green
+            Write-Step 'Myst overlay window detected - UI thread is running.' -Color Green
             return $true
         }
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 500
     }
 
-    Write-Step 'Overlay not visible yet. Open Roblox and press Insert if the license screen already passed.' -Color Yellow
+    Write-Step "Overlay not detected yet (class: $overlayClass). Loader/auth may still be starting." -Color Yellow
     return $false
 }
 
@@ -1473,6 +1499,39 @@ public class Injector {
         IntPtr t = CreateRemoteThread(hProc, IntPtr.Zero, 0, freeLibAddr, modBase, 0, IntPtr.Zero);
         if (t == IntPtr.Zero) { CloseHandle(hProc); return false; }
         WaitForSingleObject(t, 0xFFFFFFFF);
+        CloseHandle(t);
+        CloseHandle(hProc);
+        return true;
+    }
+
+    [DllImport("kernel32")] static extern IntPtr LoadLibrary(string lpFileName);
+    [DllImport("kernel32")] static extern bool FreeLibrary(IntPtr hLibModule);
+
+    public static bool InvokeRemoteExport(int pid, string dllPath, string exportName) {
+        LastError = "";
+        IntPtr remoteBase = GetModuleBase(pid, dllPath);
+        if (remoteBase == IntPtr.Zero) { LastError = "GetModuleBase"; return false; }
+
+        IntPtr localModule = LoadLibrary(dllPath);
+        if (localModule == IntPtr.Zero) { LastError = "LoadLibrary(local)"; return false; }
+
+        IntPtr localExport = GetProcAddress(localModule, exportName);
+        if (localExport == IntPtr.Zero) {
+            LastError = "GetProcAddress(" + exportName + ")";
+            FreeLibrary(localModule);
+            return false;
+        }
+
+        long offset = localExport.ToInt64() - localModule.ToInt64();
+        IntPtr remoteExport = new IntPtr(remoteBase.ToInt64() + offset);
+        FreeLibrary(localModule);
+
+        IntPtr hProc = OpenProcessWithFallback(pid);
+        if (hProc == IntPtr.Zero) { LastError = "OpenProcess"; return false; }
+
+        IntPtr t = CreateRemoteThreadEx(hProc, remoteExport, IntPtr.Zero);
+        if (t == IntPtr.Zero) { LastError = "CreateRemoteThread"; CloseHandle(hProc); return false; }
+        WaitForSingleObject(t, 15000);
         CloseHandle(t);
         CloseHandle(hProc);
         return true;
