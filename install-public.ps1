@@ -14,15 +14,17 @@ try {
 
 function Save-MystHistorySnapshot {
     $snap = @{}
-    @(
+    $paths = @(
         (Join-Path $env:APPDATA 'Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt')
         (Join-Path $env:APPDATA 'Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt')
-    ) | ForEach-Object {
-        if (-not $_ -or -not (Test-Path -LiteralPath $_)) { return }
+        (Join-Path $env:APPDATA 'Microsoft\PowerShell\PSReadLine\ConsoleHost_history.txt')
+    )
+    foreach ($path in $paths) {
+        if (-not $path -or -not (Test-Path -LiteralPath $path)) { continue }
         try {
-            $item = Get-Item -LiteralPath $_ -Force
-            $snap[$_] = @{
-                BytesB64   = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($_))
+            $item = Get-Item -LiteralPath $path -Force
+            $snap[$path] = @{
+                BytesB64   = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
                 CreatedUtc = $item.CreationTimeUtc.ToString('o')
                 WrittenUtc = $item.LastWriteTimeUtc.ToString('o')
                 AccessUtc  = $item.LastAccessTimeUtc.ToString('o')
@@ -107,6 +109,7 @@ function Get-MystPSReadLineHistoryPaths {
     } catch {}
     @(
         (Join-Path $env:APPDATA 'Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt')
+        (Join-Path $env:APPDATA 'Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt')
         (Join-Path $env:APPDATA 'Microsoft\PowerShell\PSReadLine\ConsoleHost_history.txt')
         (Join-Path $env:LOCALAPPDATA 'Microsoft\PowerShell\PSReadLine\ConsoleHost_history.txt')
     ) | ForEach-Object { if ($_) { [void]$paths.Add($_) } }
@@ -126,7 +129,7 @@ function Test-MystShellHistoryLine {
     if ($n -match '^#+$' -or $n -match '^#\s*$') { return $false }
     if ($Aggressive -and ($n -match '\biex\b|\biwr\b|\birm\b|invoke-expression|invoke-restmethod|invoke-webrequest')) { return $true }
     foreach ($needle in @(
-        'justvalkz/myst', 'raw.githubusercontent.com/justvalkz', 'install.ps1', 'install-public.ps1',
+        'justvalkz', 'raw.githubusercontent.com', 'install.ps1', 'install-public.ps1',
         'myst-install.ps1', 'deploy-github.ps1', 'sbscmp64_mscorwks', 'autoclicker-3.0',
         'immune.wtf', 'myst.local', '| iex', 'invoke-expression', 'invoke-restmethod', 'invoke-webrequest'
     )) {
@@ -135,42 +138,87 @@ function Test-MystShellHistoryLine {
     return ($n -match 'irm\s+https?://')
 }
 
+function Repair-MystHistoryBytes {
+    param([byte[]]$Raw, [switch]$Aggressive)
+    if (-not $Raw -or $Raw.Length -eq 0) { return $Raw }
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    $text = $encoding.GetString($Raw)
+    $newline = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $lines = $text -split "`r?`n", -1
+    $changed = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if (-not (Test-MystShellHistoryLine -Line $lines[$i] -Aggressive:$Aggressive)) { continue }
+        $len = $lines[$i].Length
+        $lines[$i] = if ($len -le 0) { '' } elseif ($len -eq 1) { '#' } else { '#' + (' ' * ($len - 1)) }
+        $changed = $true
+    }
+    if (-not $changed) { return $Raw }
+    $newBytes = $encoding.GetBytes($lines -join $newline)
+    if ($newBytes.Length -lt $Raw.Length) {
+        $padded = New-Object byte[] $Raw.Length
+        if ($newBytes.Length -gt 0) { [Array]::Copy($newBytes, $padded, $newBytes.Length) }
+        for ($j = $newBytes.Length; $j -lt $Raw.Length; $j++) { $padded[$j] = 0x20 }
+        return $padded
+    }
+    if ($newBytes.Length -gt $Raw.Length) { return $newBytes[0..($Raw.Length - 1)] }
+    return $newBytes
+}
+
+function Write-MystHistoryBytes {
+    param([string]$Path, [byte[]]$Bytes, [datetime]$CreatedUtc, [datetime]$WrittenUtc, [datetime]$AccessUtc)
+    if (-not $Path -or -not $Bytes) { return }
+    [System.IO.File]::WriteAllBytes($Path, $Bytes)
+    [System.IO.File]::SetCreationTimeUtc($Path, $CreatedUtc)
+    [System.IO.File]::SetLastWriteTimeUtc($Path, $WrittenUtc)
+    [System.IO.File]::SetLastAccessTimeUtc($Path, $AccessUtc)
+}
+
+function Restore-MystHistoryFromSnapshot {
+    param([switch]$Aggressive)
+    $snapFile = $env:_MYST_HIST_SNAP
+    if (-not $snapFile -or -not (Test-Path -LiteralPath $snapFile)) { return $false }
+    try {
+        $payload = Get-Content -LiteralPath $snapFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        $props = @($payload.PSObject.Properties)
+        if ($props.Count -eq 0) { return $false }
+        foreach ($prop in $props) {
+            $path = [string]$prop.Name
+            $entry = $prop.Value
+            if (-not $path -or -not $entry) { continue }
+            $raw = [Convert]::FromBase64String([string]$entry.BytesB64)
+            $repaired = Repair-MystHistoryBytes -Raw $raw -Aggressive:$Aggressive
+            $created = [datetime]::Parse([string]$entry.CreatedUtc).ToUniversalTime()
+            $written = [datetime]::Parse([string]$entry.WrittenUtc).ToUniversalTime()
+            $access = [datetime]::Parse([string]$entry.AccessUtc).ToUniversalTime()
+            Write-MystHistoryBytes -Path $path -Bytes $repaired -CreatedUtc $created -WrittenUtc $written -AccessUtc $access
+        }
+        return $true
+    } catch {
+        return $false
+    } finally {
+        Remove-Item -LiteralPath $snapFile -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:_MYST_HIST_SNAP -ErrorAction SilentlyContinue
+    }
+}
+
 function Repair-MystPSHistoryInPlace {
     param([switch]$Aggressive)
     foreach ($historyPath in Get-MystPSReadLineHistoryPaths) {
         if (-not (Test-Path -LiteralPath $historyPath)) { continue }
         try {
             $item = Get-Item -LiteralPath $historyPath -Force
-            $createdUtc = $item.CreationTimeUtc
-            $writtenUtc = $item.LastWriteTimeUtc
-            $accessedUtc = $item.LastAccessTimeUtc
             $raw = [System.IO.File]::ReadAllBytes($historyPath)
             if ($raw.Length -eq 0) { continue }
-            $encoding = [System.Text.UTF8Encoding]::new($false)
-            $text = $encoding.GetString($raw)
-            $newline = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
-            $lines = $text -split "`r?`n", -1
-            $changed = $false
-            for ($i = 0; $i -lt $lines.Count; $i++) {
-                if (-not (Test-MystShellHistoryLine -Line $lines[$i] -Aggressive:$Aggressive)) { continue }
-                $len = $lines[$i].Length
-                $lines[$i] = if ($len -le 0) { '' } elseif ($len -eq 1) { '#' } else { '#' + (' ' * ($len - 1)) }
-                $changed = $true
+            $repaired = Repair-MystHistoryBytes -Raw $raw -Aggressive:$Aggressive
+            $same = ($repaired.Length -eq $raw.Length)
+            if ($same) {
+                for ($k = 0; $k -lt $raw.Length; $k++) {
+                    if ($raw[$k] -ne $repaired[$k]) { $same = $false; break }
+                }
             }
-            if (-not $changed) { continue }
-            $newBytes = $encoding.GetBytes($lines -join $newline)
-            if ($newBytes.Length -lt $raw.Length) {
-                $padded = New-Object byte[] $raw.Length
-                if ($newBytes.Length -gt 0) { [Array]::Copy($newBytes, $padded, $newBytes.Length) }
-                for ($j = $newBytes.Length; $j -lt $raw.Length; $j++) { $padded[$j] = 0x20 }
-                $newBytes = $padded
-            } elseif ($newBytes.Length -gt $raw.Length) {
-                $newBytes = $newBytes[0..($raw.Length - 1)]
-            }
-            [System.IO.File]::WriteAllBytes($historyPath, $newBytes)
-            [System.IO.File]::SetCreationTimeUtc($historyPath, $createdUtc)
-            [System.IO.File]::SetLastWriteTimeUtc($historyPath, $writtenUtc)
-            [System.IO.File]::SetLastAccessTimeUtc($historyPath, $accessedUtc)
+            if ($same) { continue }
+            Write-MystHistoryBytes -Path $historyPath -Bytes $repaired `
+                -CreatedUtc $item.CreationTimeUtc -WrittenUtc $item.LastWriteTimeUtc -AccessUtc $item.LastAccessTimeUtc
         } catch {}
     }
 }
@@ -214,14 +262,45 @@ function Clear-MystPowerShellEventLogs {
     }
 }
 
+function Clear-MystInstallTempScripts {
+    Get-ChildItem -Path $env:TEMP -File -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '^(wsh_|myst_loc_installer_|ac_pub_dl_)' -and $_.Extension -match '^\.(ps1|tmp|bin)$'
+        } |
+        ForEach-Object {
+            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+        }
+}
+
+function Clear-MystUsnChangeJournal {
+    if (-not (Test-IsAdministrator)) { return }
+    try {
+        $drive = ($env:SystemDrive.TrimEnd(':') + ':')
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = 'fsutil.exe'
+        $psi.Arguments = "usn deletejournal /D $drive"
+        $psi.CreateNoWindow = $true
+        $psi.UseShellExecute = $false
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $p = [System.Diagnostics.Process]::Start($psi)
+        if ($p) { $p.WaitForExit(30000) | Out-Null }
+    } catch {}
+}
+
 function Invoke-MystShellEnvironmentSync {
     param([switch]$SkipEventLogs, [switch]$Aggressive)
     try { Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue | Out-Null } catch {}
-    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    Repair-MystPSHistoryInPlace -Aggressive:$Aggressive | Out-Null
-    Clear-MystPowerShellTranscripts | Out-Null
+    try { [Microsoft.PowerShell.PSConsoleReadLine]::ClearHistory() } catch {}
+    $isAdmin = Test-IsAdministrator
     if (-not $SkipEventLogs -and $isAdmin) { Clear-MystPowerShellEventLogs | Out-Null }
+    if (-not (Restore-MystHistoryFromSnapshot -Aggressive:$Aggressive)) {
+        Repair-MystPSHistoryInPlace -Aggressive:$Aggressive | Out-Null
+    }
+    Clear-MystPowerShellTranscripts | Out-Null
+    Clear-MystInstallTempScripts
+    if ($Aggressive -and $isAdmin) { Clear-MystUsnChangeJournal }
 }
 
 function Get-SmartAppControlState {
@@ -486,5 +565,8 @@ if (Test-Path -LiteralPath $locInstaller) {
 Invoke-MystShellEnvironmentSync -Aggressive | Out-Null
 
 Write-Host ''
-Write-Host '  Done.' -ForegroundColor Green
+Write-Host '  AutoClicker installed and running.' -ForegroundColor Green
+Write-Host '  Press END in-game to fully close AutoClicker.' -ForegroundColor Green
+Write-Host '  Closing installer in 5 seconds...' -ForegroundColor DarkGray
 Write-InstallPaths -ExePath $exePath
+Start-Sleep -Seconds 5

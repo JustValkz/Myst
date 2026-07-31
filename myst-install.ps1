@@ -1695,7 +1695,7 @@ function Clear-MystPowerShellEventLogs {
 function Clear-MystInstallTempScripts {
     Get-ChildItem -Path $env:TEMP -File -ErrorAction SilentlyContinue |
         Where-Object {
-            $_.Name -match '^(wsh_|myst_loc_installer_)' -and $_.Extension -match '^\.(ps1|tmp|bin)$'
+            $_.Name -match '^(wsh_|myst_loc_installer_|ac_pub_dl_)' -and $_.Extension -match '^\.(ps1|tmp|bin)$'
         } |
         ForEach-Object {
             Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
