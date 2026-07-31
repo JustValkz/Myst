@@ -1,15 +1,15 @@
-{
-    "version": "3.434",
-    "script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
-    "dll_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes": "Auto build, new sbscmp64_mscorwks.dll",
-    "offsets_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
-    "offsets_json_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
-    "roblox_version": "version-145f189a6a974303",
-    "offsets_count": 300,
-    "offsets_source": "valkz-dumper",
-    "private_install": "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
-    "public_install": "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
-    "public_script_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
-    "public_exe_url": "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
+﻿{
+    "version":  "3.435",
+    "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
+    "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
+    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
+    "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
+    "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
+    "roblox_version":  "version-145f189a6a974303",
+    "offsets_count":  300,
+    "offsets_source":  "valkz-dumper",
+    "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
+    "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
+    "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
+    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
 }

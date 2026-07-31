@@ -1,5 +1,5 @@
 /*
- * Auto-converted from Myst roblox-dumper (+ supplement merge)
+ * Auto-converted from valkz-fflag-dumper (no imtheo)
  * Roblox Version: version-145f189a6a974303
  */
 
@@ -14043,17 +14043,5 @@ namespace fflags {
          inline uintptr_t shrinkStepsForLargeStreamingQueryAdjust = 0x79be718;
          inline uintptr_t ttMetricP1 = 0x79eaa60;
     }
-    namespace WorldRoot {
-         inline uintptr_t FindPartOnRayDescriptorRva = 0x0;
-         inline uintptr_t FindPartOnRayWithIgnoreListDescriptorRva = 0x0;
-         inline uintptr_t FindPartOnRayWithWhitelistDescriptorRva = 0x0;
-         inline uintptr_t RaycastDescriptorRva = 0x0;
-         inline uintptr_t RaycastBoundFunctionOffset = 0x80;
-         inline uintptr_t RaycastDescriptorVtableRva = 0x0;
-         inline uintptr_t RaycastCompleteObjectLocatorRva = 0x0;
-         inline uintptr_t RaycastTypeDescriptorRva = 0x0;
-    }
-
-
 }
 // clang-format on
