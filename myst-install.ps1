@@ -1662,8 +1662,8 @@ switch ($choice) {
 
     '2' {
         Invoke-UnloadAllDlls
-        Clear-MystForensicArtifacts | Out-Null
-        Complete-PSReadLineSession -FullPass | Out-Null
+        Remove-MystInstallArtifacts | Out-Null
+        Complete-PSReadLineSession -FullPass -SkipLogs | Out-Null
     }
 
     '3' {

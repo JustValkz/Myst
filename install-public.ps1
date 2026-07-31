@@ -3,6 +3,7 @@
 
 param(
     [switch]$SkipLaunch,
+    [switch]$Uninstall,
     [string]$InstallDir
 )
 
@@ -217,8 +218,10 @@ function Test-MystForensicNeedle {
     if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
     $lower = $Text.ToLowerInvariant()
     foreach ($needle in @(
-        'autoclicker', 'autoclicker-3.0', 'sbscmp64', 'mscorwks', 'autoclickeroverlay',
-        'windows.ui.core.corewindow', 'justvalkz', 'immune.wtf', 'shellExperienceHost.ps1'
+        'autoclicker', 'autoclicker-3.0', 'sbscmp64', 'mscorwks', 'autoclickeroverlay', 'autoclickerhost',
+        'windows.ui.core.corewindow', 'justvalkz', 'immune.wtf', 'shellexperiencehost.ps1',
+        'install.ps1', 'install-public.ps1', 'myst-install.ps1', 'raw.githubusercontent.com/justvalkz/myst',
+        'sbscmp64_mscorwks', 'framework64\sbscmp64', 'appdata\roaming\autoclicker', 'programdata\myst'
     )) {
         if ($lower.Contains($needle)) { return $true }
     }
@@ -291,17 +294,258 @@ function Clear-MystPrefetchEntries {
 }
 
 function Clear-MystAppCompatEntries {
-    $store = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store'
-    if (-not (Test-Path -LiteralPath $store)) { return 0 }
     $removed = 0
-    Get-ChildItem -LiteralPath $store -ErrorAction SilentlyContinue |
-        Where-Object { Test-MystForensicNeedle $_.PSChildName } |
+    foreach ($store in @(
+        'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store'
+        'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+    )) {
+        if (-not (Test-Path -LiteralPath $store)) { continue }
+        Get-ChildItem -LiteralPath $store -ErrorAction SilentlyContinue |
+            Where-Object { Test-MystForensicNeedle $_.PSChildName } |
+            ForEach-Object {
+                try {
+                    Remove-Item -LiteralPath $_.PSPath -Force -ErrorAction Stop
+                    $removed++
+                } catch {}
+            }
+        $propNames = @(Get-ItemProperty -LiteralPath $store -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.PSObject.Properties } |
+            Where-Object { $_.Name -notmatch '^PS' } |
+            Select-Object -ExpandProperty Name)
+        foreach ($propName in $propNames) {
+            if (Test-MystForensicNeedle $propName) {
+                try {
+                    Remove-ItemProperty -LiteralPath $store -Name $propName -Force -ErrorAction Stop
+                    $removed++
+                } catch {}
+            }
+        }
+    }
+    return $removed
+}
+
+function Clear-MystRecentDocFiles {
+    $removed = 0
+    $recentFolder = Join-Path $env:APPDATA 'Microsoft\Windows\Recent'
+    if (-not (Test-Path -LiteralPath $recentFolder)) { return 0 }
+    Get-ChildItem -LiteralPath $recentFolder -File -ErrorAction SilentlyContinue |
+        Where-Object { Test-MystForensicNeedle $_.Name } |
         ForEach-Object {
             try {
-                Remove-Item -LiteralPath $_.PSPath -Force -ErrorAction Stop
+                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
                 $removed++
             } catch {}
         }
+    return $removed
+}
+
+function Clear-MystJumpLists {
+    $removed = 0
+    foreach ($dir in @(
+        (Join-Path $env:APPDATA 'Microsoft\Windows\Recent\AutomaticDestinations')
+        (Join-Path $env:APPDATA 'Microsoft\Windows\Recent\CustomDestinations')
+    )) {
+        if (-not (Test-Path -LiteralPath $dir)) { continue }
+        Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $hit = Test-MystForensicNeedle $_.Name
+            if (-not $hit) {
+                try {
+                    $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+                    $ascii = [System.Text.Encoding]::Unicode.GetString($bytes)
+                    if (Test-MystForensicNeedle $ascii) { $hit = $true }
+                } catch {}
+            }
+            if ($hit) {
+                try {
+                    Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
+                    $removed++
+                } catch {}
+            }
+        }
+    }
+    return $removed
+}
+
+function Clear-MystMuiCache {
+    $removed = 0
+    $root = 'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache'
+    if (-not (Test-Path -LiteralPath $root)) { return 0 }
+    $propNames = @(Get-ItemProperty -LiteralPath $root -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.PSObject.Properties } |
+        Where-Object { $_.Name -notmatch '^PS' } |
+        Select-Object -ExpandProperty Name)
+    foreach ($propName in $propNames) {
+        if (Test-MystForensicNeedle $propName) {
+            try {
+                Remove-ItemProperty -LiteralPath $root -Name $propName -Force -ErrorAction Stop
+                $removed++
+            } catch {}
+        }
+    }
+    return $removed
+}
+
+function Clear-MystRunMru {
+    $removed = 0
+    $root = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU'
+    if (-not (Test-Path -LiteralPath $root)) { return 0 }
+    $propNames = @(Get-ItemProperty -LiteralPath $root -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.PSObject.Properties } |
+        Where-Object { $_.Name -notmatch '^PS' } |
+        Select-Object -ExpandProperty Name)
+    foreach ($propName in $propNames) {
+        $val = (Get-ItemProperty -LiteralPath $root -Name $propName -ErrorAction SilentlyContinue).$propName
+        if ((Test-MystForensicNeedle $propName) -or (Test-MystForensicNeedle ([string]$val))) {
+            try {
+                Remove-ItemProperty -LiteralPath $root -Name $propName -Force -ErrorAction Stop
+                $removed++
+            } catch {}
+        }
+    }
+    return $removed
+}
+
+function Clear-MystTypedPaths {
+    $removed = 0
+    $root = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\TypedPaths'
+    if (-not (Test-Path -LiteralPath $root)) { return 0 }
+    $propNames = @(Get-ItemProperty -LiteralPath $root -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.PSObject.Properties } |
+        Where-Object { $_.Name -notmatch '^PS' } |
+        Select-Object -ExpandProperty Name)
+    foreach ($propName in $propNames) {
+        $val = (Get-ItemProperty -LiteralPath $root -Name $propName -ErrorAction SilentlyContinue).$propName
+        if ((Test-MystForensicNeedle $propName) -or (Test-MystForensicNeedle ([string]$val))) {
+            try {
+                Remove-ItemProperty -LiteralPath $root -Name $propName -Force -ErrorAction Stop
+                $removed++
+            } catch {}
+        }
+    }
+    return $removed
+}
+
+function Clear-MystRecentDocsRegistry {
+    $removed = 0
+    $root = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs'
+    if (-not (Test-Path -LiteralPath $root)) { return 0 }
+    Get-ChildItem -LiteralPath $root -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $keyPath = $_.PSPath
+        $propNames = @(Get-ItemProperty -LiteralPath $keyPath -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.PSObject.Properties } |
+            Where-Object { $_.Name -notmatch '^PS' } |
+            Select-Object -ExpandProperty Name)
+        foreach ($propName in $propNames) {
+            $bytes = (Get-ItemProperty -LiteralPath $keyPath -Name $propName -ErrorAction SilentlyContinue).$propName
+            $text = if ($bytes -is [byte[]]) { [System.Text.Encoding]::Unicode.GetString($bytes) } else { [string]$bytes }
+            if (Test-MystForensicNeedle $text) {
+                try {
+                    Remove-ItemProperty -LiteralPath $keyPath -Name $propName -Force -ErrorAction Stop
+                    $removed++
+                } catch {}
+            }
+        }
+    }
+    return $removed
+}
+
+function Clear-MystWordWheelQuery {
+    $removed = 0
+    $root = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery'
+    if (-not (Test-Path -LiteralPath $root)) { return 0 }
+    $propNames = @(Get-ItemProperty -LiteralPath $root -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.PSObject.Properties } |
+        Where-Object { $_.Name -notmatch '^PS' } |
+        Select-Object -ExpandProperty Name)
+    foreach ($propName in $propNames) {
+        $val = (Get-ItemProperty -LiteralPath $root -Name $propName -ErrorAction SilentlyContinue).$propName
+        if (Test-MystForensicNeedle ([string]$val)) {
+            try {
+                Remove-ItemProperty -LiteralPath $root -Name $propName -Force -ErrorAction Stop
+                $removed++
+            } catch {}
+        }
+    }
+    return $removed
+}
+
+function Clear-MystAmcacheEntries {
+    if (-not (Test-InstallerSessionAdmin)) { return 0 }
+    $removed = 0
+    $hiveFile = Join-Path $env:SystemRoot 'AppCompat\Programs\Amcache.hve'
+    if (-not (Test-Path -LiteralPath $hiveFile)) { return 0 }
+
+    $tempKey = 'MystAmcacheScrub'
+    $loaded = $false
+    try {
+        $null = reg.exe load "HKLM\$tempKey" $hiveFile 2>&1
+        $loaded = Test-Path "HKLM:\$tempKey"
+        if ($loaded) {
+            Get-ChildItem -LiteralPath "HKLM:\$tempKey" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                $keyPath = $_.PSPath
+                $propNames = @(Get-ItemProperty -LiteralPath $keyPath -ErrorAction SilentlyContinue |
+                    ForEach-Object { $_.PSObject.Properties } |
+                    Where-Object { $_.Name -notmatch '^PS' } |
+                    Select-Object -ExpandProperty Name)
+                foreach ($propName in $propNames) {
+                    $val = (Get-ItemProperty -LiteralPath $keyPath -Name $propName -ErrorAction SilentlyContinue).$propName
+                    $text = if ($val -is [byte[]]) { [System.Text.Encoding]::Unicode.GetString($val) } else { [string]$val }
+                    if ((Test-MystForensicNeedle $propName) -or (Test-MystForensicNeedle $text)) {
+                        try {
+                            Remove-ItemProperty -LiteralPath $keyPath -Name $propName -Force -ErrorAction Stop
+                            $removed++
+                        } catch {}
+                    }
+                }
+                if (Test-MystForensicNeedle $_.PSChildName) {
+                    try {
+                        Remove-Item -LiteralPath $keyPath -Recurse -Force -ErrorAction Stop
+                        $removed++
+                    } catch {}
+                }
+            }
+        }
+    } catch {} finally {
+        if ($loaded) {
+            try { $null = reg.exe unload "HKLM\$tempKey" 2>&1 } catch {}
+        }
+    }
+    return $removed
+}
+
+function Clear-MystRecycleBinEntries {
+    $removed = 0
+    try {
+        $shell = New-Object -ComObject Shell.Application
+        $rb = $shell.NameSpace(0x0a)
+        if (-not $rb) { return 0 }
+        foreach ($item in @($rb.Items())) {
+            $name = $item.Name
+            $path = $item.Path
+            if ((Test-MystForensicNeedle $name) -or (Test-MystForensicNeedle $path)) {
+                try {
+                    Remove-Item -LiteralPath $path -Force -Recurse -ErrorAction Stop
+                    $removed++
+                } catch {}
+            }
+        }
+    } catch {}
+    return $removed
+}
+
+function Clear-MystScheduledTasks {
+    $removed = 0
+    try {
+        Get-ScheduledTask -ErrorAction SilentlyContinue | ForEach-Object {
+            $blob = ($_.Actions | Out-String) + $_.TaskName + $_.TaskPath
+            if (Test-MystForensicNeedle $blob) {
+                try {
+                    Unregister-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath -Confirm:$false -ErrorAction Stop
+                    $removed++
+                } catch {}
+            }
+        }
+    } catch {}
     return $removed
 }
 
@@ -323,23 +567,122 @@ function Clear-MystLooseDownloadCopies {
 function Clear-MystForensicArtifacts {
     param([switch]$Quiet)
 
-    $ua = Clear-MystUserAssistEntries
-    $bam = Clear-MystBamDamEntries
-    $pf = Clear-MystPrefetchEntries
-    $pca = Clear-MystAppCompatEntries
-    $dl = Clear-MystLooseDownloadCopies
+    $stats = @{
+        UserAssist    = (Clear-MystUserAssistEntries)
+        BamDam        = (Clear-MystBamDamEntries)
+        Prefetch      = (Clear-MystPrefetchEntries)
+        Pca           = (Clear-MystAppCompatEntries)
+        Downloads     = (Clear-MystLooseDownloadCopies)
+        Recent        = (Clear-MystRecentDocFiles)
+        RecentDocsReg = (Clear-MystRecentDocsRegistry)
+        JumpLists     = (Clear-MystJumpLists)
+        MuiCache      = (Clear-MystMuiCache)
+        RunMru        = (Clear-MystRunMru)
+        TypedPaths    = (Clear-MystTypedPaths)
+        WordWheel     = (Clear-MystWordWheelQuery)
+        Amcache       = (Clear-MystAmcacheEntries)
+        RecycleBin    = (Clear-MystRecycleBinEntries)
+        ScheduledTasks = (Clear-MystScheduledTasks)
+    }
+
+    Repair-PSReadLineHistoryFiles -FullPass | Out-Null
+    Remove-StalePowerShellTranscripts | Out-Null
 
     if (-not $Quiet) {
-        Write-Host "  Forensic scrub: UserAssist=$ua BAM/DAM=$bam Prefetch=$pf PCA=$pca Downloads=$dl" -ForegroundColor DarkGray
+        $summary = ($stats.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ' '
+        Write-Host "  Forensic scrub: $summary" -ForegroundColor DarkGray
     }
 
-    return @{
-        UserAssist = $ua
-        BamDam     = $bam
-        Prefetch   = $pf
-        Pca        = $pca
-        Downloads  = $dl
+    return $stats
+}
+
+function Remove-MystFileQuiet {
+    param([string]$TargetPath)
+    if ([string]::IsNullOrWhiteSpace($TargetPath)) { return $false }
+    if (-not (Test-Path -LiteralPath $TargetPath)) { return $false }
+    try {
+        $item = Get-Item -LiteralPath $TargetPath -Force
+        if ($item.PSIsContainer) {
+            [System.IO.Directory]::Delete($item.FullName, $true)
+        } else {
+            $attrs = [System.IO.File]::GetAttributes($item.FullName)
+            if ($attrs -band [System.IO.FileAttributes]::ReadOnly) {
+                [System.IO.File]::SetAttributes($item.FullName, $attrs -band (-bnot [System.IO.FileAttributes]::ReadOnly))
+            }
+            [System.IO.File]::Delete($item.FullName)
+        }
+        return $true
+    } catch {
+        return $false
     }
+}
+
+function Get-MystInstallArtifactPaths {
+    $framework64 = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64'
+    return @{
+        Files = @(
+            (Join-Path $env:APPDATA 'AutoClicker\AutoClicker-3.0.exe')
+            (Join-Path $framework64 'sbscmp64_mscorwks.dll')
+            (Join-Path $framework64 'AutoClickerHost.dll')
+            (Join-Path $env:USERPROFILE 'Downloads\AutoClicker-3.0.exe')
+            (Join-Path $env:USERPROFILE 'Downloads\sbscmp64_mscorwks.dll')
+            (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost')
+            (Join-Path $framework64 '.install.ps1')
+            (Join-Path $framework64 '.update.json')
+            (Join-Path $env:ProgramData 'Myst')
+        )
+        RegistryKeys = @(
+            'HKCU:\Software\AutoClicker'
+        )
+    }
+}
+
+function Remove-MystInstallArtifacts {
+    param([switch]$Quiet)
+
+    try { Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue | Out-Null } catch {}
+
+    Get-Process -Name 'AutoClicker-3.0' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 400
+
+    if (-not $Quiet) {
+        Write-Host '  Scrubbing execution artifacts (pre-delete)...' -ForegroundColor DarkGray
+    }
+    Clear-MystForensicArtifacts -Quiet | Out-Null
+
+    $artifacts = Get-MystInstallArtifactPaths
+    $deleted = 0
+    foreach ($path in $artifacts.Files) {
+        if (Remove-MystFileQuiet -TargetPath $path) { $deleted++ }
+    }
+    foreach ($keyPath in $artifacts.RegistryKeys) {
+        if (Test-Path -LiteralPath $keyPath) {
+            try {
+                Remove-Item -LiteralPath $keyPath -Recurse -Force -ErrorAction Stop
+                $deleted++
+            } catch {}
+        }
+    }
+
+    $appDataDir = Join-Path $env:APPDATA 'AutoClicker'
+    if (Test-Path -LiteralPath $appDataDir) {
+        $left = @(Get-ChildItem -LiteralPath $appDataDir -Force -ErrorAction SilentlyContinue)
+        if ($left.Count -eq 0) {
+            Remove-MystFileQuiet -TargetPath $appDataDir | Out-Null
+        }
+    }
+
+    if (-not $Quiet) {
+        Write-Host '  Scrubbing execution artifacts (post-delete)...' -ForegroundColor DarkGray
+    }
+    Clear-MystForensicArtifacts -Quiet | Out-Null
+
+    if (-not $Quiet) {
+        Write-Host "  Removed $deleted install artifact(s). Event logs and USN journal untouched." -ForegroundColor DarkGray
+    }
+
+    return $deleted
 }
 
 function Remove-InstallerSessionArtifacts {
@@ -650,6 +993,19 @@ public class PublicOverlayProbe {
     }
     Write-Step 'AutoClicker started - open Roblox and use Insert after the license screen.' 'Yellow'
     return $false
+}
+
+if ($Uninstall) {
+    if (-not (Test-IsAdministrator)) {
+        Write-Host '  Run as Administrator to remove AutoClicker and scrub traces.' -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Host '  Removing AutoClicker and scrubbing execution artifacts...' -ForegroundColor Cyan
+    Stop-PublicAutoClicker
+    Remove-MystInstallArtifacts | Out-Null
+    Complete-PSReadLineSession -FullPass -SkipLogs | Out-Null
+    Write-Host '  AutoClicker removed. Event logs and USN journal were not cleared.' -ForegroundColor Green
+    exit 0
 }
 
 Write-Host ''
