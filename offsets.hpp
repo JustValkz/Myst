@@ -1,5 +1,5 @@
 /*
- * Auto-converted from Myst roblox-dumper (+ supplement merge)
+ * Auto-converted from valkz-dumper (no imtheo)
  * Roblox Version: version-145f189a6a974303
  */
 
@@ -21,32 +21,10 @@ namespace offsets {
          inline uintptr_t Transparency = 0xD0;
     }
 
-    namespace Beam {
-         inline uintptr_t Attachment0 = 0x160;
-         inline uintptr_t Attachment1 = 0x170;
-         inline uintptr_t Brightness = 0x180;
-         inline uintptr_t CurveSize0 = 0x184;
-         inline uintptr_t CurveSize1 = 0x188;
-         inline uintptr_t LightEmission = 0x18c;
-         inline uintptr_t LightInfluence = 0x190;
-         inline uintptr_t Texture = 0x140;
-         inline uintptr_t TextureLength = 0x19c;
-         inline uintptr_t TextureSpeed = 0x1a4;
-         inline uintptr_t Width0 = 0x1a8;
-         inline uintptr_t Width1 = 0x1ac;
-         inline uintptr_t ZOffset = 0x1b0;
-    }
-
     namespace BloomEffect {
-         inline uintptr_t Enabled = 0xb0;
          inline uintptr_t Intensity = 0xB8;
          inline uintptr_t Size = 0xBC;
          inline uintptr_t Threshold = 0xC0;
-    }
-
-    namespace BlurEffect {
-         inline uintptr_t Enabled = 0xb0;
-         inline uintptr_t Size = 0xb8;
     }
 
     namespace ByteCode {
@@ -56,13 +34,11 @@ namespace offsets {
 
     namespace Camera {
          inline uintptr_t CFrame = 0xD8;
-         inline uintptr_t CameraSubject = 0xc8;
-         inline uintptr_t CameraType = 0x138;
+         inline uintptr_t CameraSubject = 0xC8;
+         inline uintptr_t CameraType = 0x144;
          inline uintptr_t FieldOfView = 0x140;
-         inline uintptr_t ImagePlaneDepth = 0x2d0;
          inline uintptr_t Position = 0xFC;
          inline uintptr_t Rotation = 0xD8;
-         inline uintptr_t Viewport = 0x28c;
          inline uintptr_t ViewportSize = 0x2C8;
     }
 
@@ -73,68 +49,18 @@ namespace offsets {
          inline uintptr_t OverlayTextureId = 0x128;
     }
 
-    namespace ClickDetector {
-         inline uintptr_t MaxActivationDistance = 0xe8;
-         inline uintptr_t MouseIcon = 0xc8;
-    }
-
-    namespace Clothing {
-         inline uintptr_t Color3 = 0x120;
-         inline uintptr_t Template = 0x100;
-    }
-
-    namespace ColorCorrectionEffect {
-         inline uintptr_t Brightness = 0xc4;
-         inline uintptr_t Contrast = 0xc8;
-         inline uintptr_t Enabled = 0xb0;
-         inline uintptr_t TintColor = 0xb8;
-    }
-
-    namespace ColorGradingEffect {
-         inline uintptr_t Enabled = 0xb0;
-         inline uintptr_t TonemapperPreset = 0xb8;
-    }
-
     namespace DataModel {
          inline uintptr_t CreatorId = 0x180;
          inline uintptr_t GameId = 0x188;
          inline uintptr_t GameLoaded = 0x578;
          inline uintptr_t JobId = 0x120;
          inline uintptr_t PlaceId = 0x190;
-         inline uintptr_t PlaceVersion = 0x1ac;
-         inline uintptr_t PrimitiveCount = 0x3c0;
-         inline uintptr_t ScriptContext = 0x440;
          inline uintptr_t ServerIP = 0x560;
-         inline uintptr_t ToRenderView1 = 0x1c8;
-         inline uintptr_t ToRenderView2 = 0x8;
-         inline uintptr_t ToRenderView3 = 0x28;
          inline uintptr_t Workspace = 0x160;
     }
 
-    namespace DepthOfFieldEffect {
-         inline uintptr_t Enabled = 0xb0;
-         inline uintptr_t FarIntensity = 0xb8;
-         inline uintptr_t FocusDistance = 0xbc;
-         inline uintptr_t InFocusRadius = 0xc0;
-         inline uintptr_t NearIntensity = 0xc4;
-    }
-
-    namespace DragDetector {
-         inline uintptr_t ActivatedCursorIcon = 0x1c0;
-         inline uintptr_t CursorIcon = 0xc8;
-         inline uintptr_t MaxActivationDistance = 0xe8;
-         inline uintptr_t MaxDragAngle = 0x2a8;
-         inline uintptr_t MaxDragTranslation = 0x26c;
-         inline uintptr_t MaxForce = 0x2ac;
-         inline uintptr_t MaxTorque = 0x2b0;
-         inline uintptr_t MinDragAngle = 0x2b4;
-         inline uintptr_t MinDragTranslation = 0x278;
-         inline uintptr_t ReferenceInstance = 0x1f0;
-         inline uintptr_t Responsiveness = 0x2c0;
-    }
-
     namespace FakeDataModel {
-         inline uintptr_t Pointer = 0x7E29610;
+         inline uintptr_t Pointer = 0x7E26978;
          inline uintptr_t RealDataModel = 0x1D0;
     }
 
@@ -155,19 +81,14 @@ namespace offsets {
          inline uintptr_t BorderSizePixel = 0x56C;
          inline uintptr_t ClipsDescendants = 0x5A9;
          inline uintptr_t GuiState = 0x578;
-         inline uintptr_t Image = 0x988;
          inline uintptr_t Interactable = 0x5AB;
          inline uintptr_t LayoutOrder = 0x580;
          inline uintptr_t Position = 0x510;
-         inline uintptr_t RichText = 0xb78;
          inline uintptr_t Rotation = 0x178;
-         inline uintptr_t ScreenGui_Enabled = 0x4c4;
          inline uintptr_t Selectable = 0x5AC;
          inline uintptr_t SelectionOrder = 0x59C;
          inline uintptr_t Size = 0x530;
          inline uintptr_t SizeConstraint = 0x5A0;
-         inline uintptr_t Text = 0xde8;
-         inline uintptr_t TextColor3 = 0xe98;
          inline uintptr_t Visible = 0x5AD;
          inline uintptr_t ZIndex = 0x5A4;
     }
@@ -179,29 +100,18 @@ namespace offsets {
          inline uintptr_t BreakJointsOnDeath = 0x1D7;
          inline uintptr_t CameraOffset = 0x128;
          inline uintptr_t DisplayDistanceType = 0x180;
-         inline uintptr_t DisplayName = 0xb8;
          inline uintptr_t EvaluateStateMachine = 0x1D8;
-         inline uintptr_t FloorMaterial = 0x184;
          inline uintptr_t Health = 0x190;
          inline uintptr_t HealthDisplayDistance = 0x188;
          inline uintptr_t HealthDisplayType = 0x18C;
          inline uintptr_t HipHeight = 0x194;
-         inline uintptr_t HumanoidRootPart = 0x478;
-         inline uintptr_t HumanoidState = 0x898;
-         inline uintptr_t HumanoidStateID = 0x20;
-         inline uintptr_t IsWalking = 0x93f;
-         inline uintptr_t Jump = 0x1da;
+         inline uintptr_t Jump = 0x1D0;
          inline uintptr_t JumpHeight = 0x1A0;
          inline uintptr_t JumpPower = 0x1A4;
          inline uintptr_t MaxHealth = 0x1A8;
          inline uintptr_t MaxSlopeAngle = 0x1AC;
-         inline uintptr_t MoveDirection = 0x140;
-         inline uintptr_t MoveToPart = 0x118;
-         inline uintptr_t MoveToPoint = 0x164;
          inline uintptr_t NameDisplayDistance = 0x1B0;
          inline uintptr_t NameOcclusion = 0x1B4;
-         inline uintptr_t PlatformStand = 0x1dc;
-         inline uintptr_t PlatformStatePointer = 0x4746a4f8;
          inline uintptr_t RequiresNeck = 0x1DD;
          inline uintptr_t RigType = 0x3D;
          inline uintptr_t SeatPart = 0x108;
@@ -210,10 +120,7 @@ namespace offsets {
          inline uintptr_t UseJumpPower = 0x1E0;
          inline uintptr_t WalkSpeed = 0x1D0;
          inline uintptr_t WalkSpeedCheck = 0x3BC;
-         inline uintptr_t WalkTimer = 0x408;
          inline uintptr_t WalkToPoint = 0x164;
-         inline uintptr_t Walkspeed = 0x1d0;
-         inline uintptr_t WalkspeedCheck = 0x3bc;
     }
 
     namespace InputObject {
@@ -223,13 +130,11 @@ namespace offsets {
     namespace Instance {
          inline uintptr_t ChildrenEnd = 0x8;
          inline uintptr_t ChildrenStart = 0x70;
-         inline uintptr_t ClassBase = 0x1b0;
          inline uintptr_t ClassDescriptor = 0x18;
          inline uintptr_t ClassName = 0x8;
          inline uintptr_t ComponentMap = 0x38;
          inline uintptr_t Name = 0x98;
          inline uintptr_t Parent = 0x68;
-         inline uintptr_t This = 0x8;
     }
 
     namespace Lighting {
@@ -245,18 +150,10 @@ namespace offsets {
          inline uintptr_t FogColor = 0xF4;
          inline uintptr_t FogEnd = 0x12C;
          inline uintptr_t FogStart = 0x130;
-         inline uintptr_t GeographicLatitude = 0x134;
-         inline uintptr_t GlobalShadows = 0x144;
-         inline uintptr_t GradientBottom = 0x188;
-         inline uintptr_t GradientTop = 0x148;
-         inline uintptr_t LightColor = 0x154;
-         inline uintptr_t LightDirection = 0x160;
-         inline uintptr_t MoonPosition = 0x17c;
+         inline uintptr_t GlobalShadows = 0x138;
          inline uintptr_t OutdoorAmbient = 0x100;
          inline uintptr_t ShadowSoftness = 0x13C;
          inline uintptr_t Sky = 0x1C0;
-         inline uintptr_t Source = 0x16c;
-         inline uintptr_t SunPosition = 0x170;
     }
 
     namespace LightingParameters {
@@ -271,9 +168,7 @@ namespace offsets {
     }
 
     namespace LocalScript {
-         inline uintptr_t ByteCode = 0x190;
          inline uintptr_t Bytecode = 0x190;
-         inline uintptr_t GUID = 0xd0;
          inline uintptr_t Hash = 0x98;
     }
 
@@ -301,97 +196,36 @@ namespace offsets {
          inline uintptr_t WoodPlanks = 0x15;
     }
 
-    namespace MeshContentProvider {
-         inline uintptr_t AssetID = 0x10;
-         inline uintptr_t Cache = 0xf0;
-         inline uintptr_t LRUCache = 0x20;
-         inline uintptr_t MeshData = 0x40;
-         inline uintptr_t ToMeshData = 0x40;
-    }
-
-    namespace MeshData {
-         inline uintptr_t FaceEnd = 0x38;
-         inline uintptr_t FaceStart = 0x30;
-         inline uintptr_t VertexEnd = 0x8;
-         inline uintptr_t VertexStart = 0x0;
-    }
-
     namespace MeshPart {
          inline uintptr_t MeshId = 0x2A8;
-         inline uintptr_t Texture = 0x2d8;
          inline uintptr_t TextureId = 0x2D8;
     }
 
-    namespace Misc {
-         inline uintptr_t Adornee = 0xf0;
-         inline uintptr_t AnimationId = 0xc0;
-         inline uintptr_t StringLength = 0x10;
-         inline uintptr_t Value = 0xb8;
-    }
-
-    namespace Model {
-         inline uintptr_t PrimaryPart = 0x258;
-         inline uintptr_t Scale = 0x144;
-    }
-
     namespace ModuleScript {
-         inline uintptr_t ByteCode = 0x138;
          inline uintptr_t Bytecode = 0x138;
-         inline uintptr_t GUID = 0xd0;
          inline uintptr_t Hash = 0x98;
-         inline uintptr_t IsCoreScript = 0x0;
     }
 
     namespace MouseService {
          inline uintptr_t InputObject = 0x100;
-         inline uintptr_t InputObject2 = 0x100;
-         inline uintptr_t MousePosition = 0xd4;
-         inline uintptr_t SensitivityPointer = 0x7fd51b8;
-    }
-
-    namespace ParticleEmitter {
-         inline uintptr_t Acceleration = 0x1e0;
-         inline uintptr_t Brightness = 0x21c;
-         inline uintptr_t Drag = 0x220;
-         inline uintptr_t Lifetime = 0x1f4;
-         inline uintptr_t LightEmission = 0x238;
-         inline uintptr_t LightInfluence = 0x23c;
-         inline uintptr_t Rate = 0x248;
-         inline uintptr_t RotSpeed = 0x1fc;
-         inline uintptr_t Rotation = 0x204;
-         inline uintptr_t Speed = 0x20c;
-         inline uintptr_t SpreadAngle = 0x214;
-         inline uintptr_t Texture = 0x1c0;
-         inline uintptr_t TimeScale = 0x25c;
-         inline uintptr_t VelocityInheritance = 0x260;
-         inline uintptr_t ZOffset = 0x264;
+         inline uintptr_t InputObject2 = 0xF0;
+         inline uintptr_t MousePosition = 0xD4;
     }
 
     namespace Player {
          inline uintptr_t AccountAge = 0x35C;
-         inline uintptr_t CameraMode = 0x370;
          inline uintptr_t Character = 0x298;
          inline uintptr_t DisplayName = 0x138;
          inline uintptr_t HealthDisplayDistance = 0x390;
          inline uintptr_t LocalPlayer = 0x130;
          inline uintptr_t LocaleId = 0x740;
          inline uintptr_t MaxZoomDistance = 0x368;
-         inline uintptr_t MinZoomDistance = 0x36c;
+         inline uintptr_t MinZoomDistance = 0x36C;
          inline uintptr_t ModelInstance = 0x298;
-         inline uintptr_t Mouse = 0x11e0;
          inline uintptr_t NameDisplayDistance = 0x3A0;
          inline uintptr_t Team = 0x2D8;
          inline uintptr_t TeamColor = 0x3AC;
          inline uintptr_t UserId = 0xD0;
-    }
-
-    namespace PlayerConfigurer {
-         inline uintptr_t Pointer = 0x0;
-    }
-
-    namespace PlayerMouse {
-         inline uintptr_t Icon = 0xc8;
-         inline uintptr_t Workspace = 0x150;
     }
 
     namespace Players {
@@ -402,7 +236,7 @@ namespace offsets {
          inline uintptr_t AssemblyAngularVelocity = 0x104;
          inline uintptr_t AssemblyLinearVelocity = 0xF8;
          inline uintptr_t CFrame = 0xC8;
-         inline uintptr_t Flags = 0x1b6;
+         inline uintptr_t Flags = 0x1B6;
          inline uintptr_t Material = 0x23E;
          inline uintptr_t Orientation = 0xC8;
          inline uintptr_t Owner = 0x208;
@@ -410,7 +244,6 @@ namespace offsets {
          inline uintptr_t PrimitiveFlags = 0x1B6;
          inline uintptr_t Rotation = 0xC8;
          inline uintptr_t Size = 0x1B8;
-         inline uintptr_t Validate = 0x6;
     }
 
     namespace PrimitiveFlags {
@@ -423,42 +256,16 @@ namespace offsets {
     namespace ProximityPrompt {
          inline uintptr_t ActionText = 0xB0;
          inline uintptr_t Enabled = 0x136;
-         inline uintptr_t GamepadKeyCode = 0x11c;
          inline uintptr_t HoldDuration = 0x120;
-         inline uintptr_t KeyCode = 0x124;
          inline uintptr_t KeyboardKeyCode = 0x124;
          inline uintptr_t MaxActivationDistance = 0x128;
          inline uintptr_t ObjectText = 0xD0;
          inline uintptr_t RequiresLineOfSight = 0x137;
     }
 
-    namespace RenderJob {
-         inline uintptr_t FakeDataModel = 0x38;
-         inline uintptr_t RealDataModel = 0x1c8;
-         inline uintptr_t RenderView = 0x1d0;
-    }
-
     namespace RenderView {
-         inline uintptr_t DeviceD3D11 = 0x8;
          inline uintptr_t LightingValid = 0x228;
-         inline uintptr_t SkyValid = 0x28d;
          inline uintptr_t SkyboxValid = 0x28D;
-         inline uintptr_t VisualEngine = 0x10;
-    }
-
-    namespace RunService {
-         inline uintptr_t HeartbeatFPS = 0xf4;
-         inline uintptr_t HeartbeatTask = 0x3b8;
-    }
-
-    namespace Script {
-         inline uintptr_t ByteCode = 0x190;
-         inline uintptr_t GUID = 0xd0;
-         inline uintptr_t Hash = 0x1a0;
-    }
-
-    namespace ScriptContext {
-         inline uintptr_t RequireBypass = 0x0;
     }
 
     namespace Seat {
@@ -480,25 +287,6 @@ namespace offsets {
          inline uintptr_t SunTextureId = 0x218;
     }
 
-    namespace Sound {
-         inline uintptr_t IsPlaying = 0x140;
-         inline uintptr_t Looped = 0x13d;
-         inline uintptr_t PlaybackSpeed = 0x11c;
-         inline uintptr_t RollOffMaxDistance = 0x120;
-         inline uintptr_t RollOffMinDistance = 0x124;
-         inline uintptr_t SoundGroup = 0xe8;
-         inline uintptr_t SoundId = 0xc8;
-         inline uintptr_t Volume = 0x130;
-    }
-
-    namespace SpawnLocation {
-         inline uintptr_t AllowTeamChangeOnTouch = 0x3d;
-         inline uintptr_t Enabled = 0x189;
-         inline uintptr_t ForcefieldDuration = 0x180;
-         inline uintptr_t Neutral = 0xad;
-         inline uintptr_t TeamColor = 0x184;
-    }
-
     namespace SpecialMesh {
          inline uintptr_t MeshId = 0xF8;
          inline uintptr_t Offset = 0xB8;
@@ -506,38 +294,15 @@ namespace offsets {
          inline uintptr_t TextureId = 0x128;
     }
 
-    namespace StatsItem {
-         inline uintptr_t Value = 0xc8;
-    }
-
-    namespace SunRaysEffect {
-         inline uintptr_t Enabled = 0xb0;
-         inline uintptr_t Intensity = 0xb8;
-         inline uintptr_t Spread = 0xbc;
-    }
-
-    namespace SurfaceAppearance {
-         inline uintptr_t AlphaMode = 0x290;
-         inline uintptr_t Color = 0x278;
-         inline uintptr_t ColorMap = 0xc8;
-         inline uintptr_t EmissiveMaskContent = 0xf8;
-         inline uintptr_t EmissiveStrength = 0x294;
-         inline uintptr_t EmissiveTint = 0x284;
-         inline uintptr_t MetalnessMap = 0x128;
-         inline uintptr_t NormalMap = 0x158;
-         inline uintptr_t RoughnessMap = 0x188;
-    }
-
     namespace TaskScheduler {
          inline uintptr_t JobEnd = 0xD0;
          inline uintptr_t JobName = 0x8E0;
          inline uintptr_t JobStart = 0xC8;
-         inline uintptr_t MaxFPS = 0xb0;
          inline uintptr_t Pointer = 0x84A58E0;
     }
 
     namespace Team {
-         inline uintptr_t BrickColor = 0xb8;
+         inline uintptr_t BrickColor = 0xB8;
          inline uintptr_t TeamColor = 0xB8;
     }
 
@@ -596,11 +361,6 @@ namespace offsets {
          inline uintptr_t TextYAlignment = 0xCD8;
     }
 
-    namespace Textures {
-         inline uintptr_t Decal_Texture = 0x180;
-         inline uintptr_t Texture_Texture = 0x180;
-    }
-
     namespace Tool {
          inline uintptr_t CanBeDropped = 0x4B8;
          inline uintptr_t Enabled = 0x4B9;
@@ -611,16 +371,7 @@ namespace offsets {
          inline uintptr_t GripUp = 0x494;
          inline uintptr_t ManualActivationOnly = 0x4BA;
          inline uintptr_t RequiresHandle = 0x4BB;
-         inline uintptr_t TextureId = 0x360;
          inline uintptr_t Tooltip = 0x468;
-    }
-
-    namespace UnionOperation {
-         inline uintptr_t AssetId = 0x2a8;
-    }
-
-    namespace UserInputService {
-         inline uintptr_t WindowInputState = 0x2c0;
     }
 
     namespace Value {
@@ -637,38 +388,20 @@ namespace offsets {
     }
 
     namespace VisualEngine {
-         inline uintptr_t Dimensions = 0xae0;
          inline uintptr_t FakeDataModel = 0xAC0;
          inline uintptr_t Pointer = 0x8818F60;
          inline uintptr_t RenderView = 0xBF0;
          inline uintptr_t ViewMatrix = 0x180;
     }
 
-    namespace Weld {
-         inline uintptr_t Part0 = 0x118;
-         inline uintptr_t Part1 = 0x128;
-    }
-
-    namespace WeldConstraint {
-         inline uintptr_t Part0 = 0xb8;
-         inline uintptr_t Part1 = 0xc8;
-    }
-
-    namespace WindowInputState {
-         inline uintptr_t CapsLock = 0x40;
-         inline uintptr_t CurrentTextBox = 0x48;
-    }
-
     namespace Workspace {
          inline uintptr_t CurrentCamera = 0x498;
-         inline uintptr_t DistributedGameTime = 0x4b8;
          inline uintptr_t Raycast = 0x0;
          inline uintptr_t ReadOnlyGravity = 0x9B0;
          inline uintptr_t World = 0x3F0;
     }
 
     namespace World {
-         inline uintptr_t AirProperties = 0x218;
          inline uintptr_t FallenPartsDestroyHeight = 0x208;
          inline uintptr_t Gravity = 0x210;
          inline uintptr_t Primitives = 0x288;
