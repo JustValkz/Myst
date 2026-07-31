@@ -14,6 +14,10 @@ foreach ($scope in @('Process', 'CurrentUser')) {
     } catch {}
 }
 
+try {
+    Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue | Out-Null
+} catch {}
+
 $ErrorActionPreference = 'Stop'
 
 $BodyUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/myst-install.ps1'
