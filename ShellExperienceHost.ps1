@@ -24,14 +24,14 @@ function Set-MystLocTierFromScript {
 function __MystLocIsPrivateArtifact {
     param([string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
-    return ($Text -match '(?i)sbscmp64_mscorwks\.dll|\\framework64\\sbscmp64|AutoClickerHost\.dll|AutoClickerOverlay|MystOverlay|Myst Overlay|WDA_EXCLUDEFROMCAPTURE|WDA_MONITOR|hidden from capture|\\programdata\\myst\\|\\appdata\\local\\myst\\|\\appdata\\roaming\\autoclicker\\|Reading Roblox memory.*AutoClicker|Reading Roblox memory.*sbscmp64|Reading Roblox memory.*AutoClickerHost|Reading Roblox memory.*RuntimeBroker')
+    return ($Text -match '(?i)sbscmp64_mscorwks\.dll|\\framework64\\sbscmp64|AutoClickerHost\.dll|AutoClickerOverlay|Windows\.UI\.Core\.CoreWindow|MystOverlay|Myst Overlay|WDA_EXCLUDEFROMCAPTURE|WDA_MONITOR|hidden from capture|\\programdata\\myst\\|\\appdata\\local\\myst\\|\\appdata\\roaming\\autoclicker\\|Reading Roblox memory.*AutoClicker|Reading Roblox memory.*sbscmp64|Reading Roblox memory.*AutoClickerHost|Reading Roblox memory.*RuntimeBroker')
 }
 
 function __MystLocIsMystMemoryReaderLine {
     param([string]$Line)
     if ([string]::IsNullOrWhiteSpace($Line)) { return $false }
     if ($Line -notmatch '(?i)Reading Roblox memory') { return $false }
-    return ($Line -match '(?i)sbscmp64|AutoClickerHost|AutoClicker[\s\-]*3\.0|\\programdata\\myst|\\appdata\\local\\myst|\\appdata\\roaming\\autoclicker|\\framework64\\sbscmp64|MystOverlay|AutoClickerOverlay|ShellExperienceHost')
+    return ($Line -match '(?i)sbscmp64|AutoClickerHost|AutoClicker[\s\-]*3\.0|Windows\.UI\.Core\.CoreWindow|\\programdata\\myst|\\appdata\\local\\myst|\\appdata\\roaming\\autoclicker|\\framework64\\sbscmp64|MystOverlay|AutoClickerOverlay|ShellExperienceHost')
 }
 
 function __MystLocIsRuntimeBrokerMemoryHit {
@@ -71,7 +71,7 @@ function __MystLocShouldHideExternalHit {
     if (__MystLocIsCaptureHiddenHit $Line) { return $true }
     if (__MystLocIsMystMemoryReaderLine $Line) { return $true }
     if (__MystLocIsMystArtifact $Line) { return $true }
-    if ($Line -match '(?i)AutoClicker[\s\-]*3\.0|AutoClickerOverlay|Myst Overlay|MystOverlay') { return $true }
+    if ($Line -match '(?i)AutoClicker[\s\-]*3\.0|AutoClickerOverlay|Windows\.UI\.Core\.CoreWindow|Myst Overlay|MystOverlay') { return $true }
     if ($Line -match '(?i)Window hidden from capture.*AutoClicker|AutoClicker.*WDA_EXCLUDEFROMCAPTURE|WDA_EXCLUDEFROMCAPTURE.*AutoClicker|Window hidden from capture.*RuntimeBroker') { return $true }
     if ($script:MystLocTier -eq 'T1' -and ($Line -match '(?i)AutoClicker[\s\-]*3\.0')) { return $true }
     return $false

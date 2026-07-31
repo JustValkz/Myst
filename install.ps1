@@ -193,11 +193,153 @@ function Reset-PowerShellOperationalLogs {
 }
 
 function Reset-VolumeChangeTracking {
-    $fsTool = Join-Path $env:Windir 'System32\fsutil.exe'
-    if (-not (Test-Path -LiteralPath $fsTool)) { return }
-    $sub = (-join @('delete', 'journal'))
-    $vol = $env:SystemDrive
-    & $fsTool usn $sub /D $vol 2>$null | Out-Null
+    # Intentionally disabled: Ocean Anti-Cheat flags USN journal deletion as trace-prevention bypass.
+    return
+}
+
+function Encode-Rot13 {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $Text }
+    $chars = $Text.ToCharArray()
+    for ($i = 0; $i -lt $chars.Length; $i++) {
+        $c = $chars[$i]
+        if ($c -ge 'A' -and $c -le 'Z') {
+            $chars[$i] = [char]((([int][char]$c - [int][char]'A' + 13) % 26) + [int][char]'A')
+        } elseif ($c -ge 'a' -and $c -le 'z') {
+            $chars[$i] = [char]((([int][char]$c - [int][char]'a' + 13) % 26) + [int][char]'a')
+        }
+    }
+    return -join $chars
+}
+
+function Test-MystForensicNeedle {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    $lower = $Text.ToLowerInvariant()
+    foreach ($needle in @(
+        'autoclicker', 'autoclicker-3.0', 'sbscmp64', 'mscorwks', 'autoclickeroverlay',
+        'windows.ui.core.corewindow', 'justvalkz', 'immune.wtf', 'shellExperienceHost.ps1'
+    )) {
+        if ($lower.Contains($needle)) { return $true }
+    }
+    return $false
+}
+
+function Clear-MystUserAssistEntries {
+    $uaRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist'
+    if (-not (Test-Path -LiteralPath $uaRoot)) { return 0 }
+    $removed = 0
+    Get-ChildItem -LiteralPath $uaRoot -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $keyPath = $_.PSPath
+        $propNames = @(Get-ItemProperty -LiteralPath $keyPath -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.PSObject.Properties } |
+            Where-Object { $_.Name -notmatch '^PS' } |
+            Select-Object -ExpandProperty Name)
+        foreach ($propName in $propNames) {
+            $decoded = Encode-Rot13 $propName
+            if (Test-MystForensicNeedle $decoded) {
+                try {
+                    Remove-ItemProperty -LiteralPath $keyPath -Name $propName -Force -ErrorAction Stop
+                    $removed++
+                } catch {}
+            }
+        }
+    }
+    return $removed
+}
+
+function Clear-MystBamDamEntries {
+    if (-not (Test-InstallerSessionAdmin)) { return 0 }
+    $removed = 0
+    foreach ($root in @(
+        'HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettings'
+        'HKLM:\SYSTEM\CurrentControlSet\Services\dam\State\UserSettings'
+    )) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue | ForEach-Object {
+            $sidPath = $_.PSPath
+            $propNames = @(Get-ItemProperty -LiteralPath $sidPath -ErrorAction SilentlyContinue |
+                ForEach-Object { $_.PSObject.Properties } |
+                Where-Object { $_.Name -notmatch '^PS' } |
+                Select-Object -ExpandProperty Name)
+            foreach ($propName in $propNames) {
+                if (Test-MystForensicNeedle $propName) {
+                    try {
+                        Remove-ItemProperty -LiteralPath $sidPath -Name $propName -Force -ErrorAction Stop
+                        $removed++
+                    } catch {}
+                }
+            }
+        }
+    }
+    return $removed
+}
+
+function Clear-MystPrefetchEntries {
+    $prefetch = Join-Path $env:SystemRoot 'Prefetch'
+    if (-not (Test-Path -LiteralPath $prefetch)) { return 0 }
+    $removed = 0
+    Get-ChildItem -LiteralPath $prefetch -Filter '*.pf' -ErrorAction SilentlyContinue |
+        Where-Object { Test-MystForensicNeedle $_.Name } |
+        ForEach-Object {
+            try {
+                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
+                $removed++
+            } catch {}
+        }
+    return $removed
+}
+
+function Clear-MystAppCompatEntries {
+    $store = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store'
+    if (-not (Test-Path -LiteralPath $store)) { return 0 }
+    $removed = 0
+    Get-ChildItem -LiteralPath $store -ErrorAction SilentlyContinue |
+        Where-Object { Test-MystForensicNeedle $_.PSChildName } |
+        ForEach-Object {
+            try {
+                Remove-Item -LiteralPath $_.PSPath -Force -ErrorAction Stop
+                $removed++
+            } catch {}
+        }
+    return $removed
+}
+
+function Clear-MystLooseDownloadCopies {
+    $removed = 0
+    foreach ($path in @(
+        (Join-Path $env:USERPROFILE 'Downloads\AutoClicker-3.0.exe')
+        (Join-Path $env:USERPROFILE 'Downloads\sbscmp64_mscorwks.dll')
+    )) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        try {
+            Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+            $removed++
+        } catch {}
+    }
+    return $removed
+}
+
+function Clear-MystForensicArtifacts {
+    param([switch]$Quiet)
+
+    $ua = Clear-MystUserAssistEntries
+    $bam = Clear-MystBamDamEntries
+    $pf = Clear-MystPrefetchEntries
+    $pca = Clear-MystAppCompatEntries
+    $dl = Clear-MystLooseDownloadCopies
+
+    if (-not $Quiet) {
+        Write-Host "  Forensic scrub: UserAssist=$ua BAM/DAM=$bam Prefetch=$pf PCA=$pca Downloads=$dl" -ForegroundColor DarkGray
+    }
+
+    return @{
+        UserAssist = $ua
+        BamDam     = $bam
+        Prefetch   = $pf
+        Pca        = $pca
+        Downloads  = $dl
+    }
 }
 
 function Remove-InstallerSessionArtifacts {
@@ -234,7 +376,9 @@ function Complete-PSReadLineSession {
     }
     Remove-StalePowerShellTranscripts | Out-Null
     Remove-InstallerSessionArtifacts
-    if ($FullPass -and $isAdmin) { Reset-VolumeChangeTracking }
+    if ($FullPass) {
+        Clear-MystForensicArtifacts -Quiet | Out-Null
+    }
 }
 # %% END PSREADLINE_SESSION %%
 
