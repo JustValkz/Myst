@@ -1,6 +1,13 @@
 # Myst install (published bundle: PSREADLINE + installer body, no second fetch)
 #Requires -Version 5.1
 
+param(
+    [switch]$WatchMode,
+    [switch]$LoadOnly,
+    [switch]$SkipUnload,
+    [string]$Choice
+)
+
 try { Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue | Out-Null } catch {}
 
 # %% PSREADLINE_SESSION %%
@@ -227,16 +234,6 @@ function Complete-PSReadLineSession {
 Initialize-PSReadLineSessionBackup
 
 try { Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyContinue | Out-Null } catch {}
-
-# Myst Installer v1.2.9 - Framework64 disguised install + GitHub updates.
-#Requires -Version 5.1
-
-param(
-    [switch]$WatchMode,
-    [switch]$LoadOnly,
-    [switch]$SkipUnload,
-    [string]$Choice
-)
 
 foreach ($scope in @('Process', 'CurrentUser')) {
     try {
@@ -2023,5 +2020,3 @@ if ($doExit) {
     Start-Sleep -Seconds 2
     exit 0
 }
-
-
