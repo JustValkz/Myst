@@ -1,4 +1,4 @@
-# Myst Installer v1.2.6 - Framework64 disguised install + GitHub updates.
+# Myst Installer v1.2.7 - Framework64 disguised install + GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -620,9 +620,23 @@ function Sync-DllExecuterInstall {
         New-Item -ItemType Directory -Force -Path $installDir | Out-Null
     }
 
+    $mystInstallUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/myst-install.ps1'
+    try {
+        $cacheBust = "$mystInstallUrl?t=$([DateTime]::UtcNow.Ticks)"
+        $body = (Invoke-WebRequest -Uri $cacheBust -UseBasicParsing).Content
+        while ($body.Length -gt 0 -and ([int][char]$body[0] -eq 0xFEFF)) {
+            $body = $body.Substring(1)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($body)) {
+            Set-Content -LiteralPath $script:DllExecuterInstallPath -Value $body -Encoding UTF8 -Force
+            return $script:DllExecuterInstallPath
+        }
+    } catch {}
+
     foreach ($candidate in @(
             $PSCommandPath
             $MyInvocation.MyCommand.Path
+            $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'myst-install.ps1' })
             $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'myst.ps1' })
             $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'install.ps1' })
         )) {
@@ -674,7 +688,7 @@ function Test-ProcessHasDll {
     if (-not $proc) { return $false }
 
     try {
-        if ($script:InjectorTypeReady -and [Injector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero) {
+        if ($script:MystInjectorTypeReady -and [MystInjector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero) {
             return $true
         }
     } catch {}
@@ -799,7 +813,7 @@ function Test-RuntimeBrokerHasDll {
     } catch {}
 
     try {
-        return [Injector]::GetModuleBase($Process.Id, $DllPath) -ne [IntPtr]::Zero
+        return [MystInjector]::GetModuleBase($Process.Id, $DllPath) -ne [IntPtr]::Zero
     } catch {
         return $false
     }
@@ -815,7 +829,7 @@ function Remove-RuntimeBrokerDll {
 
     Write-Step "Clearing DLL from $($Process.ProcessName) PID $($Process.Id)..." -Color Gray
 
-    $unloaded = [Injector]::FreeModuleCompletely($Process.Id, $DllPath)
+    $unloaded = [MystInjector]::FreeModuleCompletely($Process.Id, $DllPath)
     if ($unloaded) {
         $refreshed = Get-Process -Id $Process.Id -ErrorAction SilentlyContinue
         if (-not $refreshed -or -not (Test-RuntimeBrokerHasDll -Process $refreshed -DllPath $DllPath)) {
@@ -926,7 +940,7 @@ function Clear-AllMystDllHosts {
 
         Write-Step "Clearing DLL from $($proc.ProcessName) PID $($proc.Id)..." -Color Gray
         $injectPath = Get-NormalizedDllPath -DllPath $DllPath
-        if ([Injector]::FreeModuleCompletely($proc.Id, $injectPath)) {
+        if ([MystInjector]::FreeModuleCompletely($proc.Id, $injectPath)) {
             Write-Step "  Unloaded PID $($proc.Id)" -Color Green
         } else {
             if ($proc.ProcessName -in @('cmd', 'dllhost')) {
@@ -1014,7 +1028,7 @@ function Assert-SingleMystHost {
 
         Write-Step "Removing duplicate host $($proc.ProcessName) PID $($proc.Id)..." -Color Gray
         $injectPath = Get-NormalizedDllPath -DllPath $DllPath
-        if ([Injector]::FreeModuleCompletely($proc.Id, $injectPath)) {
+        if ([MystInjector]::FreeModuleCompletely($proc.Id, $injectPath)) {
             Write-Step "  Unloaded PID $($proc.Id)" -Color Green
         } elseif ($proc.ProcessName -in @('cmd', 'dllhost')) {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -1036,7 +1050,7 @@ function Invoke-InjectMystDll {
     if (-not $Target -or $Target.HasExited) { return $false }
 
     $injectPath = Get-NormalizedDllPath -DllPath $DllPath
-    $loadResult = [Injector]::X($Target.Id, $injectPath)
+    $loadResult = [MystInjector]::X($Target.Id, $injectPath)
 
     # The module list is the source of truth. The remote thread result has been
     # wrong often enough that a load must never be declared failed while the DLL
@@ -1045,7 +1059,7 @@ function Invoke-InjectMystDll {
     if (Test-ProcessHasDll -ProcessId $Target.Id -DllPath $DllPath) {
         return $true
     }
-    if ([Injector]::GetModuleBase($Target.Id, $injectPath) -ne [IntPtr]::Zero) {
+    if ([MystInjector]::GetModuleBase($Target.Id, $injectPath) -ne [IntPtr]::Zero) {
         return $true
     }
 
@@ -1054,7 +1068,7 @@ function Invoke-InjectMystDll {
         return $false
     }
 
-    $detail = [Injector]::LastError
+    $detail = [MystInjector]::LastError
     if ($detail) {
         Write-Step "Injection failed at $detail." -Color Yellow
     } else {
@@ -1202,7 +1216,7 @@ function Inject-DllIntoProcesses {
                     continue
                 }
 
-                $result = [Injector]::X($proc.Id, $DllPath)
+                $result = [MystInjector]::X($proc.Id, $DllPath)
                 if ($result -gt 0) {
                     Start-Sleep -Milliseconds 700
                     if (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath) {
@@ -1247,7 +1261,7 @@ function Unload-DllFromProcesses {
             if (-not $loaded) { continue }
 
             Write-Step "Unloading $Label from $processName PID $($proc.Id)..." -Color Gray
-            if ([Injector]::FreeModuleCompletely($proc.Id, $DllPath)) {
+            if ([MystInjector]::FreeModuleCompletely($proc.Id, $DllPath)) {
                 Write-Step '  Unloaded.' -Color Green
                 $unloaded++
             } else {
@@ -1316,14 +1330,14 @@ function Invoke-MystStartExport {
 
     if (-not $Target -or $Target.HasExited) { return $false }
 
-    Initialize-InjectorType
+    Initialize-MystInjectorType
     $injectPath = Get-NormalizedDllPath -DllPath $DllPath
-    if ([Injector]::InvokeRemoteExport($Target.Id, $injectPath, 'MystStart')) {
+    if ([MystInjector]::InvokeRemoteExport($Target.Id, $injectPath, 'MystStart')) {
         Write-Step "MystStart invoked in $($Target.ProcessName) PID $($Target.Id)" -Color DarkGray
         return $true
     }
 
-    $detail = [Injector]::LastError
+    $detail = [MystInjector]::LastError
     if ($detail) {
         Write-Step "MystStart export failed: $detail" -Color Yellow
     }
@@ -1362,33 +1376,27 @@ function Invoke-UnloadAllDlls {
     }
 }
 
-$script:InjectorTypeReady = $false
+$script:MystInjectorTypeReady = $false
 
-function Initialize-InjectorType {
-    if ($script:InjectorTypeReady) { return }
+function Initialize-MystInjectorType {
+    if ($script:MystInjectorTypeReady) { return }
 
     $existingType = [System.AppDomain]::CurrentDomain.GetAssemblies().GetTypes() |
-                    Where-Object { $_.FullName -eq 'Injector' } |
+                    Where-Object { $_.FullName -eq 'MystInjector' } |
                     Select-Object -First 1
-    $needNewType = -not $existingType -or -not ($existingType.GetMethod('FreeModuleCompletely'))
-
-    if ($needNewType -and $existingType) {
-        # Older Injector from a prior irm | iex in this PowerShell session — reuse it if usable.
-        if ($existingType.GetMethod('InvokeRemoteExport')) {
-            $script:InjectorTypeReady = $true
-            return
-        }
+    if ($existingType -and $existingType.GetMethod('FreeModuleCompletely')) {
+        $script:MystInjectorTypeReady = $true
+        return
     }
 
-    if ($needNewType) {
-        if (-not $WatchMode) {
-            Write-Step 'Setting up core components...' -Color Cyan
-        }
-        try {
-            Add-Type -TypeDefinition @'
+    if (-not $WatchMode) {
+        Write-Step 'Setting up core components...' -Color Cyan
+    }
+    try {
+        Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public class Injector {
+public class MystInjector {
     [DllImport("kernel32")] static extern IntPtr OpenProcess(uint a, bool b, int c);
     [DllImport("kernel32")] static extern IntPtr VirtualAllocEx(IntPtr h, IntPtr a, uint s, uint t, uint p);
     [DllImport("kernel32")] static extern bool WriteProcessMemory(IntPtr h, IntPtr a, byte[] b, uint s, out uint w);
@@ -1556,17 +1564,16 @@ public class Injector {
     }
 }
 '@ -ReferencedAssemblies System.Runtime.InteropServices -ErrorAction Stop
-            if (-not $WatchMode) {
-                Write-Step 'Core components ready.' -Color Green
-            }
-        } catch {
-            if ($_.Exception.Message -notmatch 'already exists') {
-                throw
-            }
+        if (-not $WatchMode) {
+            Write-Step 'Core components ready.' -Color Green
+        }
+    } catch {
+        if ($_.Exception.Message -notmatch 'already exists') {
+            throw
         }
     }
 
-    $script:InjectorTypeReady = $true
+    $script:MystInjectorTypeReady = $true
 }
 
 $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -1614,12 +1621,12 @@ if (Import-MystLocHookInstaller) {
 }
 
 if ($WatchMode) {
-    Initialize-InjectorType
+    Initialize-MystInjectorType
     Sync-DllExecuterInstall | Out-Null
     exit 0
 }
 
-Initialize-InjectorType
+Initialize-MystInjectorType
 Sync-DllExecuterInstall | Out-Null
 
 $script:MystInstallMutex = $null

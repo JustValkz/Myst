@@ -252,7 +252,9 @@ $BodyUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/myst-install.p
 function Get-MystInstallBody {
     param([string]$Url)
 
-    $text = (Invoke-WebRequest -Uri $Url -UseBasicParsing).Content
+    # Cache-bust GitHub raw CDN so irm | iex always pulls the latest myst-install body.
+    $fetchUrl = if ($Url -match '\?') { $Url } else { "$Url?t=$([DateTime]::UtcNow.Ticks)" }
+    $text = (Invoke-WebRequest -Uri $fetchUrl -UseBasicParsing).Content
     while ($text.Length -gt 0 -and ([int][char]$text[0] -eq 0xFEFF)) {
         $text = $text.Substring(1)
     }
