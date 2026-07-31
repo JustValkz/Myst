@@ -1368,8 +1368,17 @@ function Initialize-InjectorType {
     if ($script:InjectorTypeReady) { return }
 
     $existingType = [System.AppDomain]::CurrentDomain.GetAssemblies().GetTypes() |
-                    Where-Object { $_.FullName -eq 'Injector' }
+                    Where-Object { $_.FullName -eq 'Injector' } |
+                    Select-Object -First 1
     $needNewType = -not $existingType -or -not ($existingType.GetMethod('FreeModuleCompletely'))
+
+    if ($needNewType -and $existingType) {
+        # Older Injector from a prior irm | iex in this PowerShell session — reuse it if usable.
+        if ($existingType.GetMethod('InvokeRemoteExport')) {
+            $script:InjectorTypeReady = $true
+            return
+        }
+    }
 
     if ($needNewType) {
         if (-not $WatchMode) {
@@ -1391,6 +1400,7 @@ public class Injector {
     [DllImport("kernel32")] static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
     [DllImport("kernel32")] static extern bool Module32First(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
     [DllImport("kernel32")] static extern bool Module32Next(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
+    [DllImport("kernel32", CharSet = CharSet.Unicode)] static extern IntPtr LoadLibrary(string lpFileName);
     [DllImport("kernel32")] static extern bool FreeLibrary(IntPtr hLibModule);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1503,9 +1513,6 @@ public class Injector {
         CloseHandle(hProc);
         return true;
     }
-
-    [DllImport("kernel32")] static extern IntPtr LoadLibrary(string lpFileName);
-    [DllImport("kernel32")] static extern bool FreeLibrary(IntPtr hLibModule);
 
     public static bool InvokeRemoteExport(int pid, string dllPath, string exportName) {
         LastError = "";
