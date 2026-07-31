@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.389",
+    "version":  "3.391",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "v3.388 MVS role teamcheck, wallcheck fail-closed, HBE enemy-only expand",
+    "notes":  "v3.390 MVS map scan HRP fix, role teamcheck, cache reset on round swap",
     "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
