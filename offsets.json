@@ -4,7 +4,7 @@
     "author": "Valkz (JustValkz)",
     "github": "https://github.com/JustValkz/Myst",
     "roblox_version": "version-145f189a6a974303",
-    "total_offsets": 287
+    "total_offsets": 261
   },
   "offsets": {
     "Atmosphere": {
@@ -93,35 +93,6 @@
       "Visible": 1453,
       "ZIndex": 1444
     },
-    "Humanoid": {
-      "AutoJumpEnabled": 468,
-      "AutoRotate": 469,
-      "AutomaticScalingEnabled": 470,
-      "BreakJointsOnDeath": 471,
-      "CameraOffset": 296,
-      "DisplayDistanceType": 384,
-      "EvaluateStateMachine": 472,
-      "Health": 400,
-      "HealthDisplayDistance": 392,
-      "HealthDisplayType": 396,
-      "HipHeight": 404,
-      "Jump": 464,
-      "JumpHeight": 416,
-      "JumpPower": 420,
-      "MaxHealth": 424,
-      "MaxSlopeAngle": 428,
-      "NameDisplayDistance": 432,
-      "NameOcclusion": 436,
-      "RequiresNeck": 477,
-      "RigType": 61,
-      "SeatPart": 264,
-      "Sit": 478,
-      "TargetPoint": 332,
-      "UseJumpPower": 480,
-      "WalkSpeed": 464,
-      "WalkSpeedCheck": 956,
-      "WalkToPoint": 356
-    },
     "InputObject": {
       "MousePosition": 212
     },
@@ -195,7 +166,7 @@
     },
     "ModuleScript": {
       "Bytecode": 312,
-      "Hash": 152
+      "Hash": 328
     },
     "MouseService": {
       "InputObject": 256,
@@ -218,6 +189,8 @@
       "LocalPlayer": 304
     },
     "Primitive": {
+      "AssemblyAngularVelocity": 260,
+      "AssemblyLinearVelocity": 248,
       "CFrame": 200,
       "Material": 574,
       "Orientation": 200,
@@ -244,9 +217,6 @@
     "RenderView": {
       "LightingValid": 552,
       "SkyboxValid": 653
-    },
-    "Seat": {
-      "Occupant": 432
     },
     "Sky": {
       "MoonAngularSize": 580,

@@ -39,6 +39,7 @@ namespace offsets {
          inline uintptr_t FieldOfView = 0x140;
          inline uintptr_t Position = 0xFC;
          inline uintptr_t Rotation = 0xD8;
+         inline uintptr_t Viewport = 0x2E0;
          inline uintptr_t ViewportSize = 0x2C8;
     }
 
@@ -105,6 +106,8 @@ namespace offsets {
          inline uintptr_t HealthDisplayDistance = 0x188;
          inline uintptr_t HealthDisplayType = 0x18C;
          inline uintptr_t HipHeight = 0x194;
+         inline uintptr_t HumanoidState = 0x898;
+         inline uintptr_t HumanoidStateID = 0x20;
          inline uintptr_t Jump = 0x1D0;
          inline uintptr_t JumpHeight = 0x1A0;
          inline uintptr_t JumpPower = 0x1A4;
@@ -112,6 +115,7 @@ namespace offsets {
          inline uintptr_t MaxSlopeAngle = 0x1AC;
          inline uintptr_t NameDisplayDistance = 0x1B0;
          inline uintptr_t NameOcclusion = 0x1B4;
+         inline uintptr_t PlatformStand = 0x1DC;
          inline uintptr_t RequiresNeck = 0x1DD;
          inline uintptr_t RigType = 0x3D;
          inline uintptr_t SeatPart = 0x108;
@@ -121,6 +125,8 @@ namespace offsets {
          inline uintptr_t WalkSpeed = 0x1D0;
          inline uintptr_t WalkSpeedCheck = 0x3BC;
          inline uintptr_t WalkToPoint = 0x164;
+         inline uintptr_t Walkspeed = 0x1D0;
+         inline uintptr_t WalkspeedCheck = 0x3BC;
     }
 
     namespace InputObject {
@@ -201,9 +207,13 @@ namespace offsets {
          inline uintptr_t TextureId = 0x2D8;
     }
 
+    namespace Misc {
+         inline uintptr_t AnimationId = 0xC0;
+    }
+
     namespace ModuleScript {
          inline uintptr_t Bytecode = 0x138;
-         inline uintptr_t Hash = 0x98;
+         inline uintptr_t Hash = 0x148;
     }
 
     namespace MouseService {
@@ -244,6 +254,7 @@ namespace offsets {
          inline uintptr_t PrimitiveFlags = 0x1B6;
          inline uintptr_t Rotation = 0xC8;
          inline uintptr_t Size = 0x1B8;
+         inline uintptr_t Validate = 0x6;
     }
 
     namespace PrimitiveFlags {
@@ -292,6 +303,10 @@ namespace offsets {
          inline uintptr_t Offset = 0xB8;
          inline uintptr_t Scale = 0xC4;
          inline uintptr_t TextureId = 0x128;
+    }
+
+    namespace StatsItem {
+         inline uintptr_t Value = 0xB8;
     }
 
     namespace TaskScheduler {
@@ -388,6 +403,7 @@ namespace offsets {
     }
 
     namespace VisualEngine {
+         inline uintptr_t Dimensions = 0xAE0;
          inline uintptr_t FakeDataModel = 0xAC0;
          inline uintptr_t Pointer = 0x8818F60;
          inline uintptr_t RenderView = 0xBF0;
