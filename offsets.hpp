@@ -10,17 +10,6 @@
 namespace offsets {
     inline char roblox_version[64] = "version-145f189a6a974303";
 
-    namespace BasePart {
-         inline uintptr_t CastShadow = 0xD5;
-         inline uintptr_t Color3 = 0x148;
-         inline uintptr_t Locked = 0xD6;
-         inline uintptr_t Massless = 0xD7;
-         inline uintptr_t Primitive = 0x128;
-         inline uintptr_t Reflectance = 0xCC;
-         inline uintptr_t Shape = 0x159;
-         inline uintptr_t Transparency = 0xD0;
-    }
-
     namespace BloomEffect {
          inline uintptr_t Intensity = 0xB8;
          inline uintptr_t Size = 0xBC;
@@ -61,7 +50,7 @@ namespace offsets {
     }
 
     namespace FakeDataModel {
-         inline uintptr_t Pointer = 0x7E26978;
+         inline uintptr_t Pointer = 0x80BA060;
          inline uintptr_t RealDataModel = 0x1D0;
     }
 
@@ -218,7 +207,7 @@ namespace offsets {
 
     namespace MouseService {
          inline uintptr_t InputObject = 0x100;
-         inline uintptr_t InputObject2 = 0xF0;
+         inline uintptr_t InputObject2 = 0x100;
          inline uintptr_t MousePosition = 0xD4;
     }
 
