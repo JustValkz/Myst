@@ -314,7 +314,6 @@ function Install-MystLocIexHook {
             [string]$Command
         )
         process {
-            if ([string]::IsNullOrWhiteSpace($Command)) { return }
             if ($Command.Length -ge 3500 -and $Command -match 'LocTier1Version|LocTier2Version|Get-ExternalCheatHits|LOCT2UPDATER|Get-SuspiciousProcessHits') {
                 Invoke-MystLocScan -ScriptText $Command
                 return
