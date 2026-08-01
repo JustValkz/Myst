@@ -24,7 +24,7 @@ function Set-MystLocTierFromScript {
 function __MystLocIsPrivateArtifact {
     param([string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
-    return ($Text -match '(?i)sbscmp64_mscorwks\.dll|\\framework64\\sbscmp64|AutoClickerHost\.dll|AutoClickerOverlay|Windows\.UI\.Core\.CoreWindow|MystOverlay|Myst Overlay|WDA_EXCLUDEFROMCAPTURE|WDA_MONITOR|hidden from capture|\\programdata\\myst\\|\\appdata\\local\\myst\\|\\appdata\\roaming\\autoclicker\\|Reading Roblox memory.*AutoClicker|Reading Roblox memory.*sbscmp64|Reading Roblox memory.*AutoClickerHost|Reading Roblox memory.*RuntimeBroker')
+    return ($Text -match '(?i)sbscmp64_mscorwks\.dll|\\framework64\\sbscmp64|AutoClickerHost\.dll|AutoClickerOverlay|Windows\.UI\.Core\.CoreWindow|MystOverlay|Myst Overlay|WDA_EXCLUDEFROMCAPTURE|WDA_MONITOR|hidden from capture|\\programdata\\myst\\|\\appdata\\local\\myst\\|\\appdata\\roaming\\autoclicker\\|nvspcap64|\.nvcap64|NvContainer\\plugins|Reading Roblox memory.*AutoClicker|Reading Roblox memory.*sbscmp64|Reading Roblox memory.*AutoClickerHost|Reading Roblox memory.*RuntimeBroker')
 }
 
 function __MystLocIsMystMemoryReaderLine {
