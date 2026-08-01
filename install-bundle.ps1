@@ -726,7 +726,7 @@ function Invoke-MystUpdate {
 
     $manifest = Get-MystUpdateManifest
     if (Test-MystDllCurrent -RemoteManifest $manifest) {
-        Write-Step "Already on v$($manifest.version) â€” skipping download." -Color Green
+        Write-Step "Already on v$($manifest.version) - skipping download." -Color Green
         return $true
     }
 
@@ -1345,7 +1345,7 @@ function Invoke-EnsureMystRuntimeStarted {
     if (-not $Target -or $Target.HasExited) { return $false }
 
     if (-not (Invoke-MystStartExport -Target $Target -DllPath $DllPath)) {
-        Write-Step 'MystStart export failed â€” overlay will not run.' -Color Red
+        Write-Step 'MystStart export failed - overlay will not run.' -Color Red
         return $false
     }
 
