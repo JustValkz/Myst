@@ -940,8 +940,9 @@ function Test-ProcessHasDll {
         [string]$DllPath
     )
 
-    $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-    if (-not $proc) { return $false }
+    if (-not $script:MystInjectorTypeReady) {
+        Initialize-MystInjectorType
+    }
 
     try {
         if ($script:MystInjectorTypeReady -and [MystInjector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero) {
@@ -949,11 +950,7 @@ function Test-ProcessHasDll {
         }
     } catch {}
 
-    try {
-        return [bool](@($proc.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath })
-    } catch {
-        return $false
-    }
+    return $false
 }
 
 function Ensure-Sbscmp30OnDisk {
