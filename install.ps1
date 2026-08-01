@@ -30,5 +30,7 @@ if ([string]::IsNullOrWhiteSpace($body)) {
     throw 'Installer bundle download was empty.'
 }
 
+$env:MYST_INSTALL_FROM_BUNDLE = '1'
+
 $installer = [scriptblock]::Create($body)
 & $installer @PSBoundParameters

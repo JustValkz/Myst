@@ -473,6 +473,22 @@ function Download-RemoteFile {
     }
 }
 
+function Test-MystDllCurrent {
+    param($RemoteManifest)
+
+    if (-not (Test-Path -LiteralPath $p)) { return $false }
+    if (-not $RemoteManifest -or -not $RemoteManifest.version) { return $false }
+    if (-not (Test-Path -LiteralPath $script:UpdateManifestPath)) { return $false }
+
+    try {
+        $localManifest = ConvertFrom-MystJsonText -Text (Get-Content -LiteralPath $script:UpdateManifestPath -Raw -Encoding UTF8)
+        if (-not $localManifest -or -not $localManifest.version) { return $false }
+        return [string]$localManifest.version -eq [string]$RemoteManifest.version
+    } catch {
+        return $false
+    }
+}
+
 function Invoke-MystUpdate {
     Write-Host ''
     Write-Host '  === Myst Update ===' -ForegroundColor Cyan
@@ -481,17 +497,22 @@ function Invoke-MystUpdate {
         New-Item -ItemType Directory -Force -Path $framework64 | Out-Null
     }
 
+    $manifest = Get-MystUpdateManifest
+    if (Test-MystDllCurrent -RemoteManifest $manifest) {
+        Write-Step "Already on v$($manifest.version) — skipping download." -Color Green
+        return $true
+    }
+
     Write-Step 'Unloading Myst before replacing DLL...' -Color Gray
     Invoke-Sbscmp30Unload | Out-Null
     Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
-    Start-Sleep -Seconds 1
+    Start-Sleep -Milliseconds 500
 
     if (-not (Remove-MystInstalledDll -Path $p)) {
         Write-Step 'Could not remove the old DLL. Close any RuntimeBroker using Myst and retry.' -Color Red
         return $false
     }
 
-    $manifest = Get-MystUpdateManifest
     $dllUrl = Get-DisguisedDllUrl -Manifest $manifest
     $versionLabel = if ($manifest -and $manifest.version) { [string]$manifest.version } else { 'latest' }
 
@@ -615,6 +636,10 @@ function Copy-LocalBuildDll {
 }
 
 function Sync-DllExecuterInstall {
+    if ($env:MYST_INSTALL_FROM_BUNDLE -eq '1') {
+        return $script:DllExecuterInstallPath
+    }
+
     $installDir = Split-Path $script:DllExecuterInstallPath -Parent
     if (-not (Test-Path -LiteralPath $installDir)) {
         New-Item -ItemType Directory -Force -Path $installDir | Out-Null
@@ -669,13 +694,15 @@ function Test-FileLocked {
 
 function Wait-ForProcess {
     param($Name, $TimeoutSeconds = 10, $Present = $true)
-    $elapsed = 0
-    while ($elapsed -lt $TimeoutSeconds) {
+    $elapsedMs = 0
+    $intervalMs = 250
+    $timeoutMs = [Math]::Max($intervalMs, $TimeoutSeconds * 1000)
+    while ($elapsedMs -lt $timeoutMs) {
         $found = Get-Process -Name $Name -ErrorAction SilentlyContinue
         if ($Present -and $found) { return $true }
         if (-not $Present -and -not $found) { return $true }
-        Start-Sleep -Seconds 1
-        $elapsed++
+        Start-Sleep -Milliseconds $intervalMs
+        $elapsedMs += $intervalMs
     }
     return $false
 }
@@ -1057,12 +1084,14 @@ function Invoke-InjectMystDll {
     # The module list is the source of truth. The remote thread result has been
     # wrong often enough that a load must never be declared failed while the DLL
     # is demonstrably mapped into the target.
-    Start-Sleep -Seconds 2
-    if (Test-ProcessHasDll -ProcessId $Target.Id -DllPath $DllPath) {
-        return $true
-    }
-    if ([MystInjector]::GetModuleBase($Target.Id, $injectPath) -ne [IntPtr]::Zero) {
-        return $true
+    for ($i = 0; $i -lt 20; $i++) {
+        if (Test-ProcessHasDll -ProcessId $Target.Id -DllPath $DllPath) {
+            return $true
+        }
+        if ([MystInjector]::GetModuleBase($Target.Id, $injectPath) -ne [IntPtr]::Zero) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 150
     }
 
     if ($loadResult -gt 0) {
@@ -1181,14 +1210,13 @@ function Invoke-Sbscmp30LoadFromDisk {
 
         if ($candidates.Count -eq 0) {
             Write-Step 'No injectable host process available yet.' -Color Yellow
-            Start-Sleep -Seconds 2
+            Start-Sleep -Milliseconds 500
             continue
         }
 
         foreach ($targetProc in $candidates) {
             Write-Step "Injecting sbscmp64 into $($targetProc.ProcessName) PID $($targetProc.Id) (attempt $($retry + 1))..." -Color Gray
             if (Invoke-InjectMystDll -Target $targetProc -DllPath $p) {
-                Start-Sleep -Seconds 1
                 Assert-SingleMystHost -DllPath $p | Out-Null
                 Invoke-EnsureMystRuntimeStarted -Target $targetProc -DllPath $p | Out-Null
                 Write-Step "sbscmp64 loaded in $($targetProc.ProcessName) PID $($targetProc.Id)" -Color Green
@@ -1196,7 +1224,7 @@ function Invoke-Sbscmp30LoadFromDisk {
             }
         }
 
-        Start-Sleep -Seconds 2
+        Start-Sleep -Milliseconds 500
     }
 
     # Last check before tearing anything down: unloading a host that is actually
@@ -1358,7 +1386,6 @@ function Invoke-LoadAllDlls {
         Write-Host ''
         Write-Host '  sbscmp64 Loaded' -ForegroundColor Green
         Write-Host '  Loaded - press Insert to open the Myst menu (license screen shows first on fresh start).' -ForegroundColor Green
-        Test-MystOverlayStarted | Out-Null
         return $true
     }
 
@@ -1400,13 +1427,13 @@ public class MystOverlayProbe {
 '@ -ErrorAction SilentlyContinue
 
     $overlayClass = 'Windows.UI.Core.CoreWindow'
-    for ($i = 0; $i -lt 20; $i++) {
+    for ($i = 0; $i -lt 15; $i++) {
         $hwnd = [MystOverlayProbe]::FindWindow($overlayClass, $null)
         if ($hwnd -ne [IntPtr]::Zero) {
             Write-Step 'Myst overlay window detected - UI thread is running.' -Color Green
             return $true
         }
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 200
     }
 
     Write-Step "Overlay not detected yet (class: $overlayClass). Loader/auth may still be starting." -Color Yellow
@@ -1672,7 +1699,9 @@ if ($WatchMode) {
 }
 
 Initialize-MystInjectorType
-Sync-DllExecuterInstall | Out-Null
+if ($env:MYST_INSTALL_FROM_BUNDLE -ne '1') {
+    Sync-DllExecuterInstall | Out-Null
+}
 
 $script:MystInstallMutex = $null
 try {
@@ -1827,8 +1856,8 @@ if ($loadSucceeded) {
 
     Write-Host ''
     Write-Host '  Myst is loaded - press Insert in-game to open the menu.' -ForegroundColor Green
-    Write-Host '  Closing installer in 5 seconds...' -ForegroundColor DarkGray
-    Start-Sleep -Seconds 5
+    Write-Host '  Closing installer in 1 second...' -ForegroundColor DarkGray
+    Start-Sleep -Seconds 1
     exit 0
 }
 
