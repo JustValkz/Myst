@@ -537,21 +537,14 @@ if (-not $SkipLaunch) {
     Test-PublicOverlayStarted | Out-Null
 }
 
-$locInstaller = Join-Path $PSScriptRoot 'loc-install-hooks.ps1'
-if (-not (Test-Path -LiteralPath $locInstaller)) {
-    $locInstaller = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\loc-install-hooks.ps1'
-}
-if (Test-Path -LiteralPath $locInstaller) {
-    . $locInstaller
-    Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
-} else {
-    try {
-        $tempInstaller = Join-Path $env:TEMP ("psrl_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
-        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/JustValkz/Myst/main/loc-install-hooks.ps1' -OutFile $tempInstaller -UseBasicParsing
-        . $tempInstaller
-        Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
-        Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
-    } catch {}
+$legacyHookDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost'
+if ($legacyHookDir) {
+    foreach ($artifact in @('ShellExperienceHost.ps1', 'loc-install-hooks.ps1', 'loc-hook.ps1', '.wshost', 'loc-arm')) {
+        $artifactPath = Join-Path $legacyHookDir $artifact
+        if (Test-Path -LiteralPath $artifactPath) {
+            Remove-Item -LiteralPath $artifactPath -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Complete-PSReadLineSession -FullPass | Out-Null

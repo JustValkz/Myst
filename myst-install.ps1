@@ -1659,33 +1659,30 @@ if (-not $script:IsAdmin) {
     exit 1
 }
 
-function Import-MystLocHookInstaller {
-    $candidates = @(
-        $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'loc-install-hooks.ps1' })
-        (Join-Path (Split-Path $script:DllExecuterInstallPath -Parent) 'loc-install-hooks.ps1')
-        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\loc-install-hooks.ps1')
-    )
-
-    foreach ($candidate in $candidates) {
-        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
-            . $candidate
-            return $true
+function Remove-MystLegacyLocArtifacts {
+    $hookDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost'
+    if (-not $hookDir) { return }
+    foreach ($name in @('ShellExperienceHost.ps1', 'loc-install-hooks.ps1', 'loc-hook.ps1', '.wshost', 'loc-arm')) {
+        $path = Join-Path $hookDir $name
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
         }
     }
-
-    $hookInstallerUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/loc-install-hooks.ps1'
-    try {
-        $tempInstaller = Join-Path $env:TEMP ("myst_loc_installer_{0}.ps1" -f [guid]::NewGuid().ToString('N'))
-        Invoke-WebRequest -Uri $hookInstallerUrl -OutFile $tempInstaller -UseBasicParsing
-        . $tempInstaller
-        Remove-Item -LiteralPath $tempInstaller -Force -ErrorAction SilentlyContinue
-        return $true
-    } catch {
-        return $false
+    $legacy = Join-Path $env:ProgramData 'Myst'
+    if (Test-Path -LiteralPath $legacy) {
+        Remove-Item -LiteralPath $legacy -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
-# Remove broken AllUsers profile hooks before anything else (fixes startup/irm errors on some PCs).
+function Import-MystLocHookInstaller {
+    # LOC bypass is installed only while the external is running (embedded in the DLL).
+    Remove-MystLegacyLocArtifacts
+    return $false
+}
+
+# Strip legacy LOC hooks from older builds (bypass now ships inside the external only).
+Remove-MystLegacyLocArtifacts
+
 if (Import-MystLocHookInstaller) {
     if (Get-Command Repair-MystLocPowerShellProfiles -ErrorAction SilentlyContinue) {
         Repair-MystLocPowerShellProfiles | Out-Null
@@ -1764,7 +1761,6 @@ if (Import-MystLocHookInstaller) {
     if (Get-Command Repair-MystLocPowerShellProfiles -ErrorAction SilentlyContinue) {
         Repair-MystLocPowerShellProfiles | Out-Null
     }
-    Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
 }
 
 Clear-Host
@@ -1830,10 +1826,6 @@ switch ($choice) {
 }
 
 if ($loadSucceeded) {
-    if (Get-Command Install-MystLocClientHooks -ErrorAction SilentlyContinue) {
-        Install-MystLocClientHooks -ScriptRoot $PSScriptRoot -Quiet | Out-Null
-    }
-
     Complete-PSReadLineSession -FullPass | Out-Null
 
     if ($script:IsAdmin) {
