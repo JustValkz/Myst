@@ -713,9 +713,8 @@ function Test-ProcessHasDll {
         [string]$DllPath
     )
 
-    if (-not $script:MystInjectorTypeReady) {
-        Initialize-MystInjectorType
-    }
+    $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $proc) { return $false }
 
     try {
         if ($script:MystInjectorTypeReady -and [MystInjector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero) {
@@ -723,7 +722,11 @@ function Test-ProcessHasDll {
         }
     } catch {}
 
-    return $false
+    try {
+        return [bool](@($proc.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath })
+    } catch {
+        return $false
+    }
 }
 
 function Ensure-Sbscmp30OnDisk {
@@ -1081,14 +1084,14 @@ function Invoke-InjectMystDll {
     # The module list is the source of truth. The remote thread result has been
     # wrong often enough that a load must never be declared failed while the DLL
     # is demonstrably mapped into the target.
-    for ($i = 0; $i -lt 10; $i++) {
+    for ($i = 0; $i -lt 20; $i++) {
         if (Test-ProcessHasDll -ProcessId $Target.Id -DllPath $DllPath) {
             return $true
         }
         if ([MystInjector]::GetModuleBase($Target.Id, $injectPath) -ne [IntPtr]::Zero) {
             return $true
         }
-        Start-Sleep -Milliseconds 30
+        Start-Sleep -Milliseconds 150
     }
 
     if ($loadResult -gt 0) {
@@ -1119,7 +1122,7 @@ function Invoke-EnsureMystRuntimeStarted {
         return $false
     }
 
-    Start-Sleep -Milliseconds 50
+    Start-Sleep -Milliseconds 400
     if (Test-MystOverlayStarted) {
         return $true
     }
@@ -1166,14 +1169,14 @@ function Invoke-Sbscmp30LoadFromDisk {
         }
 
         Invoke-MystRequestStopExport -Target $hostProc -DllPath $p | Out-Null
-        Start-Sleep -Milliseconds 100
+        Start-Sleep -Milliseconds 600
         Clear-AllMystDllHosts -DllPath $p | Out-Null
-        Start-Sleep -Milliseconds 100
+        Start-Sleep -Seconds 1
     }
 
     if (-not $SkipUnload) {
         Clear-AllMystDllHosts -DllPath $p | Out-Null
-        Start-Sleep -Milliseconds 100
+        Start-Sleep -Seconds 1
     }
 
     Enable-SeDebugPrivilege | Out-Null

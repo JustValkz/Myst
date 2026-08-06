@@ -11,7 +11,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$bundleUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/myst-install.ps1'
+$bundleUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install-bundle.ps1'
 try {
     $body = (Invoke-WebRequest -Uri $bundleUrl -UseBasicParsing -Headers @{
         'Cache-Control' = 'no-cache, no-store, must-revalidate'
