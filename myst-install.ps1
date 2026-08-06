@@ -1,4 +1,4 @@
-# Myst Installer v1.3.0 - Framework64 disguised install + GitHub updates.
+# Myst Installer v1.3.1 - Framework64 disguised install + GitHub updates.
 #Requires -Version 5.1
 
 param(
@@ -343,45 +343,54 @@ function Remove-MystInstalledDll {
         Write-Step 'Removing old sbscmp64_mscorwks.dll...' -Color Gray
     }
 
-    Clear-AllRuntimeBrokerDll -DllPath $Path | Out-Null
-    Start-Sleep -Milliseconds 500
+    if (@(Get-ProcessesWithMystDll -DllPath $Path).Count -gt 0) {
+        Clear-AllMystDllHosts -DllPath $Path | Out-Null
+        Start-Sleep -Milliseconds 120
+    }
 
-    for ($attempt = 0; $attempt -lt 8; $attempt++) {
-        if (Test-FileLocked -Path $Path) {
-            Clear-AllRuntimeBrokerDll -DllPath $Path | Out-Null
-            Start-Sleep -Milliseconds 750
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        if (-not (Test-Path -LiteralPath $Path)) {
+            if (-not $Quiet) {
+                Write-Step 'Old DLL deleted.' -Color Green
+            }
+            return $true
         }
 
+        if (-not (Test-FileLocked -Path $Path)) {
+            try {
+                Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+                if (-not (Test-Path -LiteralPath $Path)) {
+                    if (-not $Quiet) {
+                        Write-Step 'Old DLL deleted.' -Color Green
+                    }
+                    return $true
+                }
+            } catch {}
+        }
+
+        $backup = "$Path.old"
         try {
-            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $backup) {
+                Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+            }
+            Rename-Item -LiteralPath $Path -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
             if (-not (Test-Path -LiteralPath $Path)) {
                 if (-not $Quiet) {
-                    Write-Step 'Old DLL deleted.' -Color Green
+                    Write-Step 'Old DLL moved aside (.old).' -Color Green
                 }
                 return $true
             }
         } catch {
-            $backup = "$Path.old"
-            try {
-                if (Test-Path -LiteralPath $backup) {
-                    Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
-                }
-                Rename-Item -LiteralPath $Path -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
-                if (-not (Test-Path -LiteralPath $Path)) {
-                    if (-not $Quiet) {
-                        Write-Step 'Old DLL moved aside (.old).' -Color Green
-                    }
-                    return $true
-                }
-            } catch {
-                if ($attempt -ge 7) {
-                    if (-not $Quiet) {
-                        Write-Step "Could not delete old DLL: $($_.Exception.Message)" -Color Red
-                    }
-                    return $false
-                }
-                Start-Sleep -Milliseconds 500
+            if (@(Get-ProcessesWithMystDll -DllPath $Path).Count -gt 0) {
+                Clear-AllMystDllHosts -DllPath $Path | Out-Null
             }
+            if ($attempt -ge 4) {
+                if (-not $Quiet) {
+                    Write-Step "Could not delete old DLL: $($_.Exception.Message)" -Color Red
+                }
+                return $false
+            }
+            Start-Sleep -Milliseconds 120
         }
     }
 
@@ -404,9 +413,9 @@ function Replace-StagedFile {
         New-Item -ItemType Directory -Force -Path $destDir | Out-Null
     }
 
-    if ($UnlockDllPath) {
-        Clear-AllRuntimeBrokerDll -DllPath $UnlockDllPath | Out-Null
-        Start-Sleep -Milliseconds 500
+    if ($UnlockDllPath -and @(Get-ProcessesWithMystDll -DllPath $UnlockDllPath).Count -gt 0) {
+        Clear-AllMystDllHosts -DllPath $UnlockDllPath | Out-Null
+        Start-Sleep -Milliseconds 120
     }
 
     if (-not (Remove-MystInstalledDll -Path $Destination -Quiet)) {
@@ -503,10 +512,11 @@ function Invoke-MystUpdate {
         return $true
     }
 
-    Write-Step 'Unloading Myst before replacing DLL...' -Color Gray
-    Invoke-Sbscmp30Unload | Out-Null
-    Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
-    Start-Sleep -Milliseconds 500
+    if (@(Get-ProcessesWithMystDll -DllPath $p).Count -gt 0) {
+        Write-Step 'Unloading Myst before replacing DLL...' -Color Gray
+        Invoke-Sbscmp30Unload | Out-Null
+        Start-Sleep -Milliseconds 120
+    }
 
     if (-not (Remove-MystInstalledDll -Path $p)) {
         Write-Step 'Could not remove the old DLL. Close any RuntimeBroker using Myst and retry.' -Color Red
@@ -707,20 +717,35 @@ function Wait-ForProcess {
     return $false
 }
 
+function Test-ProcessHasDllFast {
+    param(
+        [int]$ProcessId,
+        [string]$DllPath
+    )
+
+    if (-not $ProcessId -or [string]::IsNullOrWhiteSpace($DllPath)) { return $false }
+    if (-not $script:MystInjectorTypeReady) { return $false }
+
+    try {
+        $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+        return [MystInjector]::GetModuleBase($ProcessId, $injectPath) -ne [IntPtr]::Zero
+    } catch {
+        return $false
+    }
+}
+
 function Test-ProcessHasDll {
     param(
         [int]$ProcessId,
         [string]$DllPath
     )
 
+    if (Test-ProcessHasDllFast -ProcessId $ProcessId -DllPath $DllPath) {
+        return $true
+    }
+
     $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
     if (-not $proc) { return $false }
-
-    try {
-        if ($script:MystInjectorTypeReady -and [MystInjector]::GetModuleBase($ProcessId, $DllPath) -ne [IntPtr]::Zero) {
-            return $true
-        }
-    } catch {}
 
     try {
         return [bool](@($proc.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath })
@@ -742,7 +767,9 @@ function Ensure-Sbscmp30OnDisk {
                 if ($ForceRefresh -or $sourceInfo.LastWriteTimeUtc -gt $destInfo.LastWriteTimeUtc -or $sourceInfo.Length -ne $destInfo.Length) {
                     Write-Step "Updating sbscmp64 from local build ($($sourceInfo.FullName))..." -Color Yellow
                     if (Test-FileLocked -Path $p) {
-                        Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
+                        if (@(Get-ProcessesWithMystDll -DllPath $p).Count -gt 0) {
+                            Clear-AllMystDllHosts -DllPath $p | Out-Null
+                        }
                     }
                     $copied = Copy-LocalBuildDll -Destination $p -Names @('Myst.dll', 'sbscmp64_mscorwks.dll')
                     if ($copied) {
@@ -760,7 +787,9 @@ function Ensure-Sbscmp30OnDisk {
     }
 
     if (Test-FileLocked -Path $p) {
-        Clear-AllRuntimeBrokerDll -DllPath $p | Out-Null
+        if (@(Get-ProcessesWithMystDll -DllPath $p).Count -gt 0) {
+            Clear-AllMystDllHosts -DllPath $p | Out-Null
+        }
     }
 
     $copied = Copy-LocalBuildDll -Destination $p -Names @('Myst.dll', 'sbscmp64_mscorwks.dll')
@@ -817,13 +846,12 @@ function Test-DllOnDisk {
 function Get-RuntimeBrokersWithDll {
     param([string]$DllPath)
 
+    Initialize-MystInjectorType
     $loaded = @()
     foreach ($proc in Get-Process -Name $n -ErrorAction SilentlyContinue) {
-        try {
-            if (@($proc.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath }) {
-                $loaded += $proc
-            }
-        } catch {}
+        if (Test-ProcessHasDllFast -ProcessId $proc.Id -DllPath $DllPath) {
+            $loaded += $proc
+        }
     }
     return $loaded
 }
@@ -835,17 +863,7 @@ function Test-RuntimeBrokerHasDll {
     )
 
     if (-not $Process -or $Process.HasExited) { return $false }
-    try {
-        if (@($Process.Modules) | Where-Object { Test-DllPathMatch $_.FileName $DllPath }) {
-            return $true
-        }
-    } catch {}
-
-    try {
-        return [MystInjector]::GetModuleBase($Process.Id, $DllPath) -ne [IntPtr]::Zero
-    } catch {
-        return $false
-    }
+    return (Test-ProcessHasDllFast -ProcessId $Process.Id -DllPath $DllPath)
 }
 
 function Remove-RuntimeBrokerDll {
@@ -911,7 +929,7 @@ function Start-RuntimeBrokerInstance {
             return $null
         }
     }
-    Start-Sleep -Seconds 2
+    Start-Sleep -Milliseconds 400
     return (Get-RuntimeBrokerInjectionTarget -DllPath $DllPath)
 }
 
@@ -929,23 +947,40 @@ function Get-RuntimeBrokerInjectionTarget {
 function Restart-RuntimeBrokerHost {
     Write-Step 'Restarting RuntimeBroker host...' -Color Gray
     Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
+    Start-Sleep -Milliseconds 250
     Start-Process $x -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
-    Start-Sleep -Seconds 2
+    Start-Sleep -Milliseconds 400
 }
 
 function Get-ProcessesWithMystDll {
     param([string]$DllPath)
 
-    $found = @()
-    foreach ($name in @('RuntimeBroker', 'explorer', 'cmd', 'dllhost')) {
+    Initialize-MystInjectorType
+    $found = @{}
+    foreach ($name in @('RuntimeBroker', 'explorer')) {
         foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
-            if (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath) {
-                $found += $proc
+            if (Test-ProcessHasDllFast -ProcessId $proc.Id -DllPath $DllPath) {
+                $found[$proc.Id] = $proc
             }
         }
     }
-    return @($found | Sort-Object Id -Unique)
+
+    if ($script:MystFallbackHostPid) {
+        $fallback = Get-Process -Id $script:MystFallbackHostPid -ErrorAction SilentlyContinue
+        if ($fallback -and (Test-ProcessHasDllFast -ProcessId $fallback.Id -DllPath $DllPath)) {
+            $found[$fallback.Id] = $fallback
+        }
+    }
+
+    foreach ($name in @('cmd', 'dllhost')) {
+        foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+            if (Test-ProcessHasDllFast -ProcessId $proc.Id -DllPath $DllPath) {
+                $found[$proc.Id] = $proc
+            }
+        }
+    }
+
+    return @($found.Values | Sort-Object Id)
 }
 
 function Clear-AllMystDllHosts {
@@ -990,7 +1025,7 @@ function Ensure-RuntimeBrokerAvailable {
 
     Write-Step 'Starting RuntimeBroker directly...' -Color Gray
     Start-Process $x -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
-    Start-Sleep -Seconds 2
+    Start-Sleep -Milliseconds 400
     return [bool](Get-Process -Name $n -ErrorAction SilentlyContinue)
 }
 
@@ -1023,7 +1058,7 @@ function Start-MystFallbackHost {
     $psi.UseShellExecute = $false
     try {
         $proc = [System.Diagnostics.Process]::Start($psi)
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 250
         return $proc
     } catch {
         return $null
@@ -1169,14 +1204,14 @@ function Invoke-Sbscmp30LoadFromDisk {
         }
 
         Invoke-MystRequestStopExport -Target $hostProc -DllPath $p | Out-Null
-        Start-Sleep -Milliseconds 600
+        Start-Sleep -Milliseconds 200
         Clear-AllMystDllHosts -DllPath $p | Out-Null
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 200
     }
 
     if (-not $SkipUnload) {
         Clear-AllMystDllHosts -DllPath $p | Out-Null
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 200
     }
 
     Enable-SeDebugPrivilege | Out-Null
@@ -1349,12 +1384,34 @@ function Unload-DllFromProcesses {
 function Invoke-LoadAllDlls {
     param([switch]$SkipUnload)
 
-    if (-not $SkipUnload) {
+    Initialize-MystInjectorType
+    $manifest = Get-MystUpdateManifest
+    $loaded = @(Get-ProcessesWithMystDll -DllPath $p)
+
+    if ($loaded.Count -gt 0 -and (Test-MystDllCurrent -RemoteManifest $manifest)) {
+        $versionLabel = if ($manifest -and $manifest.version) { [string]$manifest.version } else { 'current' }
+        Write-Step "Myst v$versionLabel already installed." -Color Green
+        if (Test-MystOverlayStarted) {
+            Write-Host ''
+            Write-Host '  Myst already loaded and running.' -ForegroundColor Green
+            Write-Host '  Press Insert in-game to open the menu.' -ForegroundColor Green
+            return $true
+        }
+
+        Write-Step 'Restarting Myst runtime...' -Color Gray
+        Invoke-EnsureMystRuntimeStarted -Target $loaded[0] -DllPath $p | Out-Null
+        if (Test-MystOverlayStarted) {
+            Write-Host ''
+            Write-Host '  sbscmp64 Loaded' -ForegroundColor Green
+            return $true
+        }
+    }
+
+    if (-not $SkipUnload -and $loaded.Count -gt 0) {
         Write-Host ''
-        Write-Step 'Unloading any existing sbscmp64...' -Color Cyan
+        Write-Step 'Unloading existing Myst...' -Color Cyan
         Invoke-Sbscmp30Unload | Out-Null
-        Clear-AllMystDllHosts -DllPath $p | Out-Null
-        Start-Sleep -Seconds 2
+        Start-Sleep -Milliseconds 200
     }
 
     Write-Step 'Ensuring latest Myst DLL is present...' -Color Cyan
@@ -1366,8 +1423,8 @@ function Invoke-LoadAllDlls {
             Write-Host '  Myst DLL missing in Framework64. Local copy failed - check T4\build\sbscmp64_mscorwks.dll.' -ForegroundColor Yellow
             return $false
         }
-    } else {
-        Write-Step 'Pulling latest sbscmp64 from GitHub (unload -> delete -> download)...' -Color Cyan
+    } elseif (-not (Test-MystDllCurrent -RemoteManifest $manifest) -or -not (Test-Path -LiteralPath $p)) {
+        Write-Step 'Pulling latest sbscmp64 from GitHub...' -Color Cyan
         if (-not (Invoke-MystUpdate)) {
             Write-Host ''
             Write-Host '  Myst DLL update failed - check GitHub files or run Unload (option 2) and retry.' -ForegroundColor Yellow
@@ -1378,6 +1435,9 @@ function Invoke-LoadAllDlls {
             Write-Host '  Myst DLL download was empty/unreadable.' -ForegroundColor Yellow
             return $false
         }
+    } else {
+        $versionLabel = if ($manifest -and $manifest.version) { [string]$manifest.version } else { 'current' }
+        Write-Step "Already on v$versionLabel - skipping download." -Color Green
     }
 
     Write-Step 'Myst host load (Explorer / sbscmp64)...' -Color Cyan
@@ -1427,13 +1487,13 @@ public class MystOverlayProbe {
 '@ -ErrorAction SilentlyContinue
 
     $overlayClass = 'Windows.UI.Core.CoreWindow'
-    for ($i = 0; $i -lt 15; $i++) {
+    for ($i = 0; $i -lt 10; $i++) {
         $hwnd = [MystOverlayProbe]::FindWindow($overlayClass, $null)
         if ($hwnd -ne [IntPtr]::Zero) {
             Write-Step 'Myst overlay window detected - UI thread is running.' -Color Green
             return $true
         }
-        Start-Sleep -Milliseconds 200
+        Start-Sleep -Milliseconds 150
     }
 
     Write-Step "Overlay not detected yet (class: $overlayClass). Loader/auth may still be starting." -Color Yellow
@@ -1627,9 +1687,9 @@ public class MystInjector {
     public static bool FreeModuleCompletely(int pid, string dllPath) {
         IntPtr modBase = GetModuleBase(pid, dllPath);
         if (modBase == IntPtr.Zero) return true;
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 10; i++) {
             if (!FreeModuleOnce(pid, modBase)) return false;
-            System.Threading.Thread.Sleep(200);
+            System.Threading.Thread.Sleep(60);
             if (GetModuleBase(pid, dllPath) == IntPtr.Zero) return true;
         }
         return false;
@@ -1714,9 +1774,8 @@ try {
 if ($LoadOnly) {
     Write-Host '  Myst direct load mode' -ForegroundColor Cyan
     if (Invoke-LoadAllDlls -SkipUnload:$SkipUnload) {
-        Complete-PSReadLineSession -FullPass | Out-Null
+        Complete-PSReadLineSession -FullPass -SkipLogs | Out-Null
         Write-Host '  DLL loaded successfully.' -ForegroundColor Green
-        Start-Sleep -Seconds 5
         exit 0
     }
     Write-Host '  DLL load failed.' -ForegroundColor Red
@@ -1766,7 +1825,7 @@ if (Import-MystLocHookInstaller) {
 Clear-Host
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.2.6            |' -ForegroundColor Cyan
+Write-Host '  |         MYST INSTALLER v1.3.1            |' -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load (latest)              |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
@@ -1826,7 +1885,7 @@ switch ($choice) {
 }
 
 if ($loadSucceeded) {
-    Complete-PSReadLineSession -FullPass | Out-Null
+    Complete-PSReadLineSession -FullPass -SkipLogs | Out-Null
 
     if ($script:IsAdmin) {
         foreach ($log in $script:LoggingPaths.Keys) {
@@ -1848,13 +1907,10 @@ if ($loadSucceeded) {
 
     Write-Host ''
     Write-Host '  Myst is loaded - press Insert in-game to open the menu.' -ForegroundColor Green
-    Write-Host '  Closing installer in 1 second...' -ForegroundColor DarkGray
-    Start-Sleep -Seconds 1
     exit 0
 }
 
 if ($doExit) {
-    Start-Sleep -Seconds 2
     exit 0
 }
 

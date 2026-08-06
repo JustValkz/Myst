@@ -406,7 +406,7 @@ function Replace-StagedFile {
     }
 
     if (Test-Path -LiteralPath $Destination) {
-        for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        for ($attempt = 0; $attempt -lt 4; $attempt++) {
             try {
                 Remove-Item -LiteralPath $Destination -Force -ErrorAction Stop
                 break
@@ -419,8 +419,8 @@ function Replace-StagedFile {
                     Rename-Item -LiteralPath $Destination -NewName (Split-Path -Leaf $backup) -Force -ErrorAction Stop
                     break
                 } catch {
-                    if ($attempt -ge 5) { throw }
-                    Start-Sleep -Milliseconds 500
+                    if ($attempt -ge 3) { throw }
+                    Start-Sleep -Milliseconds 150
                 }
             }
         }
@@ -446,7 +446,7 @@ function Save-Download {
             Get-Process -Name $processName -ErrorAction SilentlyContinue |
                 Stop-Process -Force -ErrorAction SilentlyContinue
         }
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 120
     }
 
     $temp = Join-Path $env:TEMP ("ac_pub_dl_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
@@ -478,7 +478,7 @@ function Save-Download {
 function Stop-PublicAutoClicker {
     Get-Process -Name 'AutoClicker-3.0' -ErrorAction SilentlyContinue |
         Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 400
+    Start-Sleep -Milliseconds 120
 }
 
 function Test-PublicOverlayStarted {
@@ -491,13 +491,13 @@ public class PublicOverlayProbe {
 }
 '@ -ErrorAction SilentlyContinue
 
-    for ($i = 0; $i -lt 12; $i++) {
+    for ($i = 0; $i -lt 8; $i++) {
         $hwnd = [PublicOverlayProbe]::FindWindow('Windows.UI.Core.CoreWindow', $null)
         if ($hwnd -ne [IntPtr]::Zero) {
             Write-Step 'AutoClicker overlay detected.' 'Green'
             return $true
         }
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 200
     }
     Write-Step 'AutoClicker started - open Roblox and use Insert after the license screen.' 'Yellow'
     return $false
@@ -547,11 +547,9 @@ if ($legacyHookDir) {
     }
 }
 
-Complete-PSReadLineSession -FullPass | Out-Null
+Complete-PSReadLineSession -FullPass -SkipLogs | Out-Null
 
 Write-Host ''
 Write-Host '  AutoClicker installed and running.' -ForegroundColor Green
 Write-Host '  Press END in-game to fully close AutoClicker.' -ForegroundColor Green
-Write-Host '  Closing installer in 5 seconds...' -ForegroundColor DarkGray
 Write-InstallPaths -ExePath $exePath
-Start-Sleep -Seconds 5
