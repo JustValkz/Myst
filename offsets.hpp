@@ -45,6 +45,17 @@ namespace offsets {
         inline constexpr uintptr_t Size = 0x28;
     }
 
+    namespace BasePart {
+         inline uintptr_t CastShadow = 0xD5;
+         inline uintptr_t Color3 = 0x148;
+         inline uintptr_t Locked = 0xD6;
+         inline uintptr_t Massless = 0xD7;
+         inline uintptr_t Primitive = 0x128;
+         inline uintptr_t Reflectance = 0xCC;
+         inline uintptr_t Shape = 0x159;
+         inline uintptr_t Transparency = 0xD0;
+    }
+
     namespace Camera {
         inline constexpr uintptr_t CFrame = 0xD8;
         inline constexpr uintptr_t CameraType = 0x144;
