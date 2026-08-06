@@ -15,9 +15,12 @@
       "RealDataModel": 464
     },
     "Instance": {
+      "ChildrenEnd": 8,
+      "ChildrenStart": 120,
       "ClassDescriptor": 24,
       "ClassName": 8,
-      "Name": 152,
+      "Name": 8,
+      "NameContainer": 112,
       "Parent": 104
     },
     "RenderView": {
