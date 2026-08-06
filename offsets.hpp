@@ -1,6 +1,6 @@
 /*
  * Auto-converted from valkz-dumper (no imtheo)
- * Roblox Version: version-145f189a6a974303
+ * Roblox Version: version-d584fb6c717a43d9
  */
 
 #pragma once
@@ -8,22 +8,17 @@
 
 // clang-format off
 namespace offsets {
-    inline char roblox_version[64] = "version-145f189a6a974303";
+    inline char roblox_version[64] = "version-d584fb6c717a43d9";
 
-    namespace BasePart {
-         inline uintptr_t CastShadow = 0xD5;
-         inline uintptr_t Color3 = 0x148;
-         inline uintptr_t Locked = 0xD6;
-         inline uintptr_t Massless = 0xD7;
-         inline uintptr_t Primitive = 0x128;
-         inline uintptr_t Reflectance = 0xCC;
-         inline uintptr_t Shape = 0x159;
-         inline uintptr_t Transparency = 0xD0;
+    namespace BloomEffect {
+         inline uintptr_t Intensity = 0xB8;
+         inline uintptr_t Size = 0xBC;
+         inline uintptr_t Threshold = 0xC0;
     }
 
     namespace ByteCode {
          inline uintptr_t Pointer = 0x10;
-         inline uintptr_t Size = 0x20;
+         inline uintptr_t Size = 0x28;
     }
 
     namespace Camera {
@@ -55,14 +50,14 @@ namespace offsets {
     }
 
     namespace FakeDataModel {
-         inline uintptr_t Pointer = 0x80BA060;
+         inline uintptr_t Pointer = 0x8A5D748;
          inline uintptr_t RealDataModel = 0x1D0;
     }
 
     namespace GuiBase2D {
-         inline uintptr_t AbsolutePosition = 0xF4;
-         inline uintptr_t AbsoluteRotation = 0x178;
-         inline uintptr_t AbsoluteSize = 0x100;
+         inline uintptr_t AbsolutePosition = 0x108;
+         inline uintptr_t AbsoluteRotation = 0xE8;
+         inline uintptr_t AbsoluteSize = 0x114;
     }
 
     namespace GuiObject {
@@ -79,7 +74,7 @@ namespace offsets {
          inline uintptr_t Interactable = 0x5AB;
          inline uintptr_t LayoutOrder = 0x580;
          inline uintptr_t Position = 0x510;
-         inline uintptr_t Rotation = 0x178;
+         inline uintptr_t Rotation = 0xE8;
          inline uintptr_t Selectable = 0x5AC;
          inline uintptr_t SelectionOrder = 0x59C;
          inline uintptr_t Size = 0x530;
@@ -111,7 +106,7 @@ namespace offsets {
          inline uintptr_t NameOcclusion = 0x1B4;
          inline uintptr_t PlatformStand = 0x1DC;
          inline uintptr_t RequiresNeck = 0x1DD;
-         inline uintptr_t RigType = 0x3D;
+         inline uintptr_t RigType = 0x1C0;
          inline uintptr_t SeatPart = 0x108;
          inline uintptr_t Sit = 0x1DE;
          inline uintptr_t TargetPoint = 0x14C;
@@ -140,7 +135,7 @@ namespace offsets {
 
     namespace Lighting {
          inline uintptr_t Ambient = 0xD0;
-         inline uintptr_t Atmosphere = 0x1D0;
+         inline uintptr_t Atmosphere = 0x1D8;
          inline uintptr_t Brightness = 0x118;
          inline uintptr_t ClockTime = 0xC8;
          inline uintptr_t ColorShift_Bottom = 0xDC;
@@ -154,23 +149,23 @@ namespace offsets {
          inline uintptr_t GlobalShadows = 0x138;
          inline uintptr_t OutdoorAmbient = 0x100;
          inline uintptr_t ShadowSoftness = 0x13C;
-         inline uintptr_t Sky = 0x1C0;
+         inline uintptr_t Sky = 0x1C8;
     }
 
     namespace LightingParameters {
          inline uintptr_t GeographicLatitude = 0x134;
-         inline uintptr_t LightColor = 0x154;
-         inline uintptr_t LightDirection = 0x160;
-         inline uintptr_t SkyAmbient = 0x148;
+         inline uintptr_t LightColor = 0x15C;
+         inline uintptr_t LightDirection = 0x168;
+         inline uintptr_t SkyAmbient = 0x150;
          inline uintptr_t SkyAmbient2 = 0x138;
-         inline uintptr_t Source = 0x16C;
-         inline uintptr_t TrueMoonPosition = 0x17C;
-         inline uintptr_t TrueSunPosition = 0x170;
+         inline uintptr_t Source = 0x174;
+         inline uintptr_t TrueMoonPosition = 0x184;
+         inline uintptr_t TrueSunPosition = 0x178;
     }
 
     namespace LocalScript {
          inline uintptr_t Bytecode = 0x190;
-         inline uintptr_t Hash = 0x98;
+         inline uintptr_t Hash = 0xD0;
     }
 
     namespace MaterialColors {
@@ -208,12 +203,12 @@ namespace offsets {
 
     namespace ModuleScript {
          inline uintptr_t Bytecode = 0x138;
-         inline uintptr_t Hash = 0x148;
+         inline uintptr_t Hash = 0xD0;
     }
 
     namespace MouseService {
          inline uintptr_t InputObject = 0x100;
-         inline uintptr_t InputObject2 = 0x100;
+         inline uintptr_t InputObject2 = 0xF0;
          inline uintptr_t MousePosition = 0xD4;
     }
 
@@ -223,14 +218,14 @@ namespace offsets {
          inline uintptr_t DisplayName = 0x138;
          inline uintptr_t HealthDisplayDistance = 0x390;
          inline uintptr_t LocalPlayer = 0x130;
-         inline uintptr_t LocaleId = 0x740;
+         inline uintptr_t LocaleId = 0x738;
          inline uintptr_t MaxZoomDistance = 0x368;
          inline uintptr_t MinZoomDistance = 0x36C;
          inline uintptr_t ModelInstance = 0x298;
          inline uintptr_t NameDisplayDistance = 0x3A0;
          inline uintptr_t Team = 0x2D8;
          inline uintptr_t TeamColor = 0x3AC;
-         inline uintptr_t UserId = 0xD0;
+         inline uintptr_t UserId = 0x300;
     }
 
     namespace Players {
@@ -242,13 +237,13 @@ namespace offsets {
          inline uintptr_t AssemblyLinearVelocity = 0xF8;
          inline uintptr_t CFrame = 0xC8;
          inline uintptr_t Flags = 0x1B6;
-         inline uintptr_t Material = 0x23E;
+         inline uintptr_t Material = 0x246;
          inline uintptr_t Orientation = 0xC8;
          inline uintptr_t Owner = 0x208;
          inline uintptr_t Position = 0xEC;
          inline uintptr_t PrimitiveFlags = 0x1B6;
          inline uintptr_t Rotation = 0xC8;
-         inline uintptr_t Size = 0x1B8;
+         inline uintptr_t Size = 0x1BC;
          inline uintptr_t Validate = 0x6;
     }
 
@@ -329,45 +324,45 @@ namespace offsets {
     namespace TextButton {
          inline uintptr_t AutoButtonColor = 0x9C4;
          inline uintptr_t ContentText = 0xDF8;
-         inline uintptr_t Font = 0x1130;
+         inline uintptr_t Font = 0x1138;
          inline uintptr_t LineHeight = 0xF10;
          inline uintptr_t LocalizedText = 0xDF8;
-         inline uintptr_t MaxVisibleGraphemes = 0x113C;
+         inline uintptr_t MaxVisibleGraphemes = 0x1144;
          inline uintptr_t Modal = 0x9C5;
          inline uintptr_t RichText = 0x100E;
          inline uintptr_t Selected = 0x9C6;
          inline uintptr_t Text = 0xDF8;
-         inline uintptr_t TextColor3 = 0x1118;
+         inline uintptr_t TextColor3 = 0x1120;
          inline uintptr_t TextDirection = 0xFB0;
-         inline uintptr_t TextScaled = 0xDE1;
-         inline uintptr_t TextSize = 0x1144;
-         inline uintptr_t TextStrokeColor3 = 0x1124;
-         inline uintptr_t TextStrokeTransparency = 0x1148;
-         inline uintptr_t TextTransparency = 0x114C;
-         inline uintptr_t TextTruncate = 0x1150;
+         inline uintptr_t TextScaled = 0x1006;
+         inline uintptr_t TextSize = 0x114C;
+         inline uintptr_t TextStrokeColor3 = 0x112C;
+         inline uintptr_t TextStrokeTransparency = 0x1150;
+         inline uintptr_t TextTransparency = 0x1154;
+         inline uintptr_t TextTruncate = 0x1009;
          inline uintptr_t TextWrapped = 0x1008;
-         inline uintptr_t TextXAlignment = 0x1154;
+         inline uintptr_t TextXAlignment = 0x115C;
          inline uintptr_t TextYAlignment = 0xF58;
     }
 
     namespace TextLabel {
          inline uintptr_t ContentText = 0xB78;
-         inline uintptr_t Font = 0xEB0;
+         inline uintptr_t Font = 0xEB8;
          inline uintptr_t LineHeight = 0xC90;
          inline uintptr_t LocalizedText = 0xB78;
-         inline uintptr_t MaxVisibleGraphemes = 0xEBC;
+         inline uintptr_t MaxVisibleGraphemes = 0xEC4;
          inline uintptr_t RichText = 0xD8E;
          inline uintptr_t Text = 0xB78;
-         inline uintptr_t TextColor3 = 0xE98;
+         inline uintptr_t TextColor3 = 0xEA0;
          inline uintptr_t TextDirection = 0xD30;
          inline uintptr_t TextScaled = 0xD86;
-         inline uintptr_t TextSize = 0xEC4;
-         inline uintptr_t TextStrokeColor3 = 0xEA4;
-         inline uintptr_t TextStrokeTransparency = 0xEC8;
-         inline uintptr_t TextTransparency = 0xECC;
-         inline uintptr_t TextTruncate = 0xED0;
+         inline uintptr_t TextSize = 0xECC;
+         inline uintptr_t TextStrokeColor3 = 0xEAC;
+         inline uintptr_t TextStrokeTransparency = 0xED0;
+         inline uintptr_t TextTransparency = 0xED4;
+         inline uintptr_t TextTruncate = 0xED8;
          inline uintptr_t TextWrapped = 0xD88;
-         inline uintptr_t TextXAlignment = 0xED4;
+         inline uintptr_t TextXAlignment = 0xEDC;
          inline uintptr_t TextYAlignment = 0xCD8;
     }
 
@@ -400,7 +395,7 @@ namespace offsets {
     namespace VisualEngine {
          inline uintptr_t Dimensions = 0xAE0;
          inline uintptr_t FakeDataModel = 0xAC0;
-         inline uintptr_t Pointer = 0x8818F60;
+         inline uintptr_t Pointer = 0x811D0A0;
          inline uintptr_t RenderView = 0xBF0;
          inline uintptr_t ViewMatrix = 0x180;
     }
@@ -408,27 +403,27 @@ namespace offsets {
     namespace Workspace {
          inline uintptr_t CurrentCamera = 0x498;
          inline uintptr_t Raycast = 0x0;
-         inline uintptr_t ReadOnlyGravity = 0x9B0;
+         inline uintptr_t ReadOnlyGravity = 0x9B8;
          inline uintptr_t World = 0x3F0;
     }
 
     namespace World {
          inline uintptr_t FallenPartsDestroyHeight = 0x208;
          inline uintptr_t Gravity = 0x210;
-         inline uintptr_t Primitives = 0x288;
-         inline uintptr_t WorldSteps = 0x700;
+         inline uintptr_t Primitives = 0x290;
+         inline uintptr_t WorldSteps = 0x708;
          inline uintptr_t worldStepsPerSec = 0x700;
     }
 
     namespace WorldRoot {
-         inline uintptr_t FindPartOnRayDescriptorRva = 0x611D080;
-         inline uintptr_t FindPartOnRayWithIgnoreListDescriptorRva = 0x611D090;
-         inline uintptr_t FindPartOnRayWithWhitelistDescriptorRva = 0x611D0A0;
+         inline uintptr_t FindPartOnRayDescriptorRva = 0x6854420;
+         inline uintptr_t FindPartOnRayWithIgnoreListDescriptorRva = 0x6854430;
+         inline uintptr_t FindPartOnRayWithWhitelistDescriptorRva = 0x6854440;
          inline uintptr_t RaycastBoundFunctionOffset = 0x80;
-         inline uintptr_t RaycastCompleteObjectLocatorRva = 0x71003B8;
-         inline uintptr_t RaycastDescriptorRva = 0x8091390;
-         inline uintptr_t RaycastDescriptorVtableRva = 0x65EB9E8;
-         inline uintptr_t RaycastTypeDescriptorRva = 0x7D4C460;
+         inline uintptr_t RaycastCompleteObjectLocatorRva = 0x7093638;
+         inline uintptr_t RaycastDescriptorRva = 0x81E7150;
+         inline uintptr_t RaycastDescriptorVtableRva = 0x61744C8;
+         inline uintptr_t RaycastTypeDescriptorRva = 0x7C961A0;
     }
 
 }

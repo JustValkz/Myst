@@ -320,6 +320,27 @@ function Get-TrustedWndwsCert {
         Select-Object -First 1
 }
 
+function Import-WndwsCertWithCertutil {
+    param(
+        [string]$CerPath,
+        [ValidateSet('User', 'Machine')]
+        [string]$Scope,
+        [ValidateSet('Root', 'TrustedPublisher')]
+        [string]$Store
+    )
+
+    $certutil = Join-Path $env:Windir 'System32\certutil.exe'
+    if (-not (Test-Path -LiteralPath $certutil)) {
+        throw 'certutil.exe not found'
+    }
+
+    $scopeFlag = if ($Scope -eq 'Machine') { '-f' } else { '-user' }
+    & $certutil @($scopeFlag, '-addstore', $Store, $CerPath) | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "certutil failed importing $Store ($Scope): exit $LASTEXITCODE"
+    }
+}
+
 function Import-WndwsCertToStore {
     param(
         [string]$CerPath,
@@ -327,20 +348,9 @@ function Import-WndwsCertToStore {
         [string]$LeafStore
     )
 
-    $rootPath = "$StoreRoot\Root"
-    $leafPath = "$StoreRoot\$LeafStore"
-
-    if (-not (Get-TrustedWndwsCert -StoreRoot $StoreRoot)) {
-        Import-Certificate -FilePath $CerPath -CertStoreLocation $rootPath | Out-Null
-    }
-
-    $existingPublisher = Get-ChildItem $leafPath -ErrorAction SilentlyContinue |
-        Where-Object { $_.Subject -eq $script:PublisherSubject } |
-        Select-Object -First 1
-
-    if (-not $existingPublisher) {
-        Import-Certificate -FilePath $CerPath -CertStoreLocation $leafPath | Out-Null
-    }
+    $scope = if ($StoreRoot -like '*LocalMachine*') { 'Machine' } else { 'User' }
+    Import-WndwsCertWithCertutil -CerPath $CerPath -Scope $scope -Store 'Root'
+    Import-WndwsCertWithCertutil -CerPath $CerPath -Scope $scope -Store 'TrustedPublisher'
 }
 
 function Install-WndwsTrustedPublisher {
