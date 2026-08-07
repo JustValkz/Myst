@@ -469,7 +469,18 @@ function Repair-MystNvidiaCapture {
         }
     }
 
-    Write-Step '  NVIDIA hook files cleared — Myst will redeploy on next load.' -Color DarkGray
+    foreach ($svcName in @('NvContainerLocalSystem', 'NVDisplay.ContainerLocalSystem')) {
+        $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+        if (-not $svc) { continue }
+        try {
+            Restart-Service -Name $svcName -Force -ErrorAction Stop
+            Write-Step "  Restarted $svcName" -Color DarkGray
+        } catch {
+            Write-Step "  Could not restart $svcName ($($_.Exception.Message))" -Color DarkGray
+        }
+    }
+
+    Write-Step '  NVIDIA hooks cleared — ShadowPlay should record again. Myst redeploys mirror hook only on next load.' -Color DarkGray
 }
 
 function Repair-MystWindowsDisplay {
