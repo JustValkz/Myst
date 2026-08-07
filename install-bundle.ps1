@@ -1675,9 +1675,12 @@ function Clear-AllMystDllHosts {
         if (Clear-MystHostDll -Process $proc -DllPath $DllPath) {
             Write-Step "  Unloaded PID $($proc.Id)" -Color Green
         } else {
-            if ($proc.ProcessName -in @('cmd', 'dllhost')) {
+            if ($proc.ProcessName -in @('cmd', 'dllhost', 'powershell')) {
+                Invoke-MystRequestUnloadExport -Target $proc -DllPath $DllPath | Out-Null
+                Invoke-MystRequestStopExport -Target $proc -DllPath $DllPath | Out-Null
+                Start-Sleep -Milliseconds 200
                 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-                Write-Step "  Stopped fallback host PID $($proc.Id)" -Color Green
+                Write-Step "  Stopped host PID $($proc.Id)" -Color Green
             } else {
                 $ok = $false
             }
