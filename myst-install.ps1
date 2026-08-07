@@ -1107,7 +1107,7 @@ function Get-ProcessesWithMystDll {
 
     Initialize-MystInjectorType
     $found = @{}
-    foreach ($name in @('RuntimeBroker', 'explorer')) {
+    foreach ($name in @('RuntimeBroker', 'explorer', 'cmd', 'dllhost')) {
         foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
             if (Test-ProcessHasDllFast -ProcessId $proc.Id -DllPath $DllPath) {
                 $found[$proc.Id] = $proc
@@ -1181,17 +1181,18 @@ function Ensure-RuntimeBrokerAvailable {
 function Get-MystInjectionCandidates {
     param([string]$DllPath)
 
-    Ensure-RuntimeBrokerAvailable | Out-Null
-    $broker = Get-RuntimeBrokerInjectionTarget -DllPath $DllPath
-    if ($broker) {
-        return @($broker)
-    }
-
-    if ($script:MystFallbackHostPid) {
-        $fallback = Get-Process -Id $script:MystFallbackHostPid -ErrorAction SilentlyContinue
-        if ($fallback -and -not $fallback.HasExited -and -not (Test-ProcessHasDll -ProcessId $fallback.Id -DllPath $DllPath)) {
-            return @($fallback)
+    if (-not $script:MystFallbackHostPid) {
+        $freshHost = Start-MystFallbackHost
+        if ($freshHost -and -not (Test-ProcessHasDll -ProcessId $freshHost.Id -DllPath $DllPath)) {
+            $script:MystFallbackHostPid = $freshHost.Id
+            return @($freshHost)
         }
+    } else {
+        $existingHost = Get-Process -Id $script:MystFallbackHostPid -ErrorAction SilentlyContinue
+        if ($existingHost -and -not $existingHost.HasExited -and -not (Test-ProcessHasDll -ProcessId $existingHost.Id -DllPath $DllPath)) {
+            return @($existingHost)
+        }
+        $script:MystFallbackHostPid = $null
     }
 
     foreach ($proc in @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
@@ -1200,11 +1201,17 @@ function Get-MystInjectionCandidates {
         }
     }
 
+    Ensure-RuntimeBrokerAvailable | Out-Null
+    $broker = Get-RuntimeBrokerInjectionTarget -DllPath $DllPath
+    if ($broker) {
+        return @($broker)
+    }
+
     return @()
 }
 
 function Start-MystFallbackHost {
-    Write-Step 'Starting fallback Myst host...' -Color Gray
+    Write-Step 'Starting dedicated Myst host (cmd)...' -Color Gray
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = Join-Path $env:SystemRoot 'System32\cmd.exe'
     $psi.Arguments = '/c ping -n 86400 127.0.0.1 >nul'
@@ -1490,7 +1497,7 @@ public class MystHostWindowProbe {
             if ((int)windowPid != pid) return true;
             var cls = new StringBuilder(256);
             if (GetClassName(hWnd, cls, cls.Capacity) <= 0) return true;
-            if (cls.ToString() == "Windows.UI.Core.CoreWindow") {
+            if (cls.ToString() == "AutoClickerOverlay" || cls.ToString() == "Windows.UI.Core.CoreWindow") {
                 found = true;
                 return false;
             }
@@ -1545,15 +1552,17 @@ public class MystOverlayProbe {
         }
     }
 
-    $overlayClass = 'Windows.UI.Core.CoreWindow'
+    $overlayClasses = @('AutoClickerOverlay', 'Windows.UI.Core.CoreWindow')
     $attempts = if ($Quiet) { 1 } else { 10 }
     for ($i = 0; $i -lt $attempts; $i++) {
-        $hwnd = [MystOverlayProbe]::FindWindow($overlayClass, $null)
-        if ($hwnd -ne [IntPtr]::Zero) {
-            if (-not $Quiet) {
-                Write-Step 'Myst overlay window detected - UI thread is running.' -Color Green
+        foreach ($overlayClass in $overlayClasses) {
+            $hwnd = [MystOverlayProbe]::FindWindow($overlayClass, $null)
+            if ($hwnd -ne [IntPtr]::Zero) {
+                if (-not $Quiet) {
+                    Write-Step "Myst overlay window detected ($overlayClass) - UI thread is running." -Color Green
+                }
+                return $true
             }
-            return $true
         }
         if (-not $Quiet) {
             Start-Sleep -Milliseconds 150
@@ -1561,7 +1570,7 @@ public class MystOverlayProbe {
     }
 
     if (-not $Quiet) {
-        Write-Step "Overlay not detected yet (class: $overlayClass). Loader/auth may still be starting." -Color Yellow
+        Write-Step 'Overlay not detected yet (AutoClickerOverlay). Loader/auth may still be starting.' -Color Yellow
     }
     return $false
 }
@@ -1624,8 +1633,7 @@ function Invoke-Sbscmp30LoadFromDisk {
 
         $candidates = @(Get-MystInjectionCandidates -DllPath $p)
 
-        # Explorer is the only preferred host. The fallback host is started only
-        # once explorer has actually refused, never up front.
+        # Dedicated cmd host first, then explorer, then RuntimeBroker.
         if ($candidates.Count -eq 0 -and -not $script:MystFallbackHostPid) {
             $fallback = Start-MystFallbackHost
             if ($fallback) {
@@ -1935,6 +1943,7 @@ public class MystInjector {
     [DllImport("ntdll.dll")] static extern int NtCreateThreadEx(out IntPtr threadHandle, uint desiredAccess, IntPtr objectAttributes, IntPtr processHandle, IntPtr startAddress, IntPtr parameter, bool createSuspended, uint stackZeroBits, uint sizeOfStackCommit, uint sizeOfStackReserve, IntPtr bytesBuffer);
 
     public static string LastError = "";
+    public static uint LastExportResult = 0;
 
     static IntPtr OpenProcessWithFallback(int pid) {
         uint[] masks = new uint[] { 0x1F0FFF, 0x043A, 0x1410 };
@@ -2060,9 +2069,12 @@ public class MystInjector {
         IntPtr t = CreateRemoteThreadEx(hProc, remoteExport, IntPtr.Zero);
         if (t == IntPtr.Zero) { LastError = "CreateRemoteThread"; CloseHandle(hProc); return false; }
         WaitForSingleObject(t, 15000);
+        uint exitCode = 0;
+        GetExitCodeThread(t, out exitCode);
+        LastExportResult = exitCode;
         CloseHandle(t);
         CloseHandle(hProc);
-        return true;
+        return exitCode != 0;
     }
 
     public static bool InvokeRemoteExport(int pid, string dllPath, string exportName) {

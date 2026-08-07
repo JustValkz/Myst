@@ -842,7 +842,10 @@ public class PublicOverlayProbe {
 '@ -ErrorAction SilentlyContinue
 
     for ($i = 0; $i -lt 8; $i++) {
-        $hwnd = [PublicOverlayProbe]::FindWindow('Windows.UI.Core.CoreWindow', $null)
+        $hwnd = [PublicOverlayProbe]::FindWindow('AutoClickerOverlay', $null)
+        if ($hwnd -eq [IntPtr]::Zero) {
+            $hwnd = [PublicOverlayProbe]::FindWindow('Windows.UI.Core.CoreWindow', $null)
+        }
         if ($hwnd -ne [IntPtr]::Zero) {
             Write-Step 'AutoClicker overlay detected.' 'Green'
             return $true

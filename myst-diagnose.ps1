@@ -18,6 +18,11 @@ function Get-MystPsLogDirectory {
 function Initialize-MystPsLogSession {
     param([string]$SessionName = 'myst-install')
 
+    if (-not [string]::IsNullOrWhiteSpace($script:MystPsLogPath) -and (Test-Path -LiteralPath $script:MystPsLogPath)) {
+        Write-MystPsLog "Continuing PowerShell log session ($SessionName)."
+        return $script:MystPsLogPath
+    }
+
     $dir = Get-MystPsLogDirectory
     if (-not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
