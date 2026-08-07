@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.463",
+    "version":  "3.464",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Fix NVIDIA recording stuck on: remove nvd3dumx patches, StopHooks on streamproof off/shutdown",
+    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
