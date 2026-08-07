@@ -1612,7 +1612,7 @@ function Assert-SingleMystHost {
 
     $keep = $null
     foreach ($proc in $hosts) {
-        if ($proc.ProcessName -eq 'powershell') {
+        if ($proc.ProcessName -eq 'RuntimeBroker') {
             $keep = $proc
             break
         }
@@ -1620,6 +1620,14 @@ function Assert-SingleMystHost {
     if (-not $keep) {
         foreach ($proc in $hosts) {
             if ($proc.ProcessName -eq 'explorer') {
+                $keep = $proc
+                break
+            }
+        }
+    }
+    if (-not $keep) {
+        foreach ($proc in $hosts) {
+            if ($proc.ProcessName -eq 'powershell') {
                 $keep = $proc
                 break
             }
@@ -1634,6 +1642,9 @@ function Assert-SingleMystHost {
         if ($proc.Id -eq $keep.Id) { continue }
 
         Write-Step "Removing duplicate host $($proc.ProcessName) PID $($proc.Id)..." -Color Gray
+        Invoke-MystRequestUnloadExport -Target $proc -DllPath $DllPath | Out-Null
+        Invoke-MystRequestStopExport -Target $proc -DllPath $DllPath | Out-Null
+        Start-Sleep -Milliseconds 150
         if ($proc.ProcessName -in @('powershell', 'cmd', 'dllhost')) {
             if (Stop-MystDisposableHost -Process $proc -DllPath $DllPath) {
                 Write-Step "  Stopped PID $($proc.Id)" -Color Green
