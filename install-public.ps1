@@ -24,12 +24,23 @@ function Initialize-MystPsLogSession {
         [string]$SessionName = 'myst-session'
     )
 
+    $dir = Get-MystPsLogDirectory
+    $markerPath = Join-Path $dir '.active-session'
+
+    if ([string]::IsNullOrWhiteSpace($script:MystPsLogPath) -and (Test-Path -LiteralPath $markerPath)) {
+        try {
+            $continued = [string](Get-Content -LiteralPath $markerPath -Raw -ErrorAction Stop).Trim()
+            if ($continued -and (Test-Path -LiteralPath $continued)) {
+                $script:MystPsLogPath = $continued
+                $script:MystPsLatestLogPath = Join-Path $dir 'latest.log'
+            }
+        } catch {}
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($script:MystPsLogPath) -and (Test-Path -LiteralPath $script:MystPsLogPath)) {
         Write-MystPsLog "Continuing PowerShell log session ($SessionName)."
         return $script:MystPsLogPath
     }
-
-    $dir = Get-MystPsLogDirectory
     if (-not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
@@ -50,6 +61,7 @@ function Initialize-MystPsLogSession {
 
     Set-Content -LiteralPath $script:MystPsLogPath -Value $header -Encoding UTF8 -Force
     Set-Content -LiteralPath $script:MystPsLatestLogPath -Value $header -Encoding UTF8 -Force
+    try { Set-Content -LiteralPath $markerPath -Value $script:MystPsLogPath -Encoding UTF8 -Force } catch {}
     return $script:MystPsLogPath
 }
 

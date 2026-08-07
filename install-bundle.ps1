@@ -22,12 +22,23 @@ function Initialize-MystPsLogSession {
         [string]$SessionName = 'myst-session'
     )
 
+    $dir = Get-MystPsLogDirectory
+    $markerPath = Join-Path $dir '.active-session'
+
+    if ([string]::IsNullOrWhiteSpace($script:MystPsLogPath) -and (Test-Path -LiteralPath $markerPath)) {
+        try {
+            $continued = [string](Get-Content -LiteralPath $markerPath -Raw -ErrorAction Stop).Trim()
+            if ($continued -and (Test-Path -LiteralPath $continued)) {
+                $script:MystPsLogPath = $continued
+                $script:MystPsLatestLogPath = Join-Path $dir 'latest.log'
+            }
+        } catch {}
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($script:MystPsLogPath) -and (Test-Path -LiteralPath $script:MystPsLogPath)) {
         Write-MystPsLog "Continuing PowerShell log session ($SessionName)."
         return $script:MystPsLogPath
     }
-
-    $dir = Get-MystPsLogDirectory
     if (-not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
@@ -48,6 +59,7 @@ function Initialize-MystPsLogSession {
 
     Set-Content -LiteralPath $script:MystPsLogPath -Value $header -Encoding UTF8 -Force
     Set-Content -LiteralPath $script:MystPsLatestLogPath -Value $header -Encoding UTF8 -Force
+    try { Set-Content -LiteralPath $markerPath -Value $script:MystPsLogPath -Encoding UTF8 -Force } catch {}
     return $script:MystPsLogPath
 }
 
@@ -1742,6 +1754,104 @@ function Start-MystFallbackHost {
     }
 }
 
+function Start-MystInProcessHost {
+    param([string]$DllPath)
+
+    $normalized = Get-NormalizedDllPath -DllPath $DllPath
+    $escapedPath = $normalized.Replace("'", "''")
+    $hostScriptPath = Join-Path $env:TEMP ("myst-host-{0}.ps1" -f ([Guid]::NewGuid().ToString('N')))
+
+    $hostScript = @"
+`$ErrorActionPreference = 'Stop'
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class MystHostLoader {
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)] public delegate bool MystStartFn();
+    [DllImport("kernel32", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr LoadLibraryW(string n);
+    [DllImport("kernel32", CharSet=CharSet.Ansi, SetLastError=true)] public static extern IntPtr GetProcAddress(IntPtr m, string n);
+    public static string LastError = "";
+    public static bool Run(string path) {
+        LastError = "";
+        IntPtr mod = LoadLibraryW(path);
+        if (mod == IntPtr.Zero) { LastError = "LoadLibraryW:" + Marshal.GetLastWin32Error(); return false; }
+        IntPtr p = GetProcAddress(mod, "MystStart");
+        if (p == IntPtr.Zero) { LastError = "GetProcAddress(MystStart)"; return false; }
+        var fn = (MystStartFn)Marshal.GetDelegateForFunctionPointer(p, typeof(MystStartFn));
+        if (!fn()) { LastError = "MystStart=false"; return false; }
+        return true;
+    }
+}
+'@
+if (-not [MystHostLoader]::Run('$escapedPath')) {
+    [Console]::Error.WriteLine([MystHostLoader]::LastError)
+    exit 1
+}
+while (`$true) { Start-Sleep -Seconds 3600 }
+"@
+
+    Set-Content -LiteralPath $hostScriptPath -Value $hostScript -Encoding UTF8 -Force
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $psi.Arguments = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$hostScriptPath`""
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $psi.CreateNoWindow = $true
+    $psi.UseShellExecute = $false
+
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        Start-Sleep -Milliseconds 400
+        try { Remove-Item -LiteralPath $hostScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+        return $proc
+    } catch {
+        try { Remove-Item -LiteralPath $hostScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+        return $null
+    }
+}
+
+function Invoke-MystLoadViaInProcessHost {
+    param([string]$DllPath)
+
+    Write-Step 'Loading Myst via in-process host (LoadLibrary + MystStart)...' -Color Cyan
+    $hostProc = Start-MystInProcessHost -DllPath $DllPath
+    if (-not $hostProc) {
+        Write-Step 'Could not spawn Myst in-process host.' -Color Red
+        return $false
+    }
+
+    $script:MystInProcessHostPid = $hostProc.Id
+
+    for ($i = 0; $i -lt 40; $i++) {
+        if ($hostProc.HasExited) {
+            Write-Step "Myst host exited early (code $($hostProc.ExitCode)) — LoadLibrary or MystStart failed in host." -Color Red
+            $script:MystInProcessHostPid = $null
+            return $false
+        }
+
+        if (Test-ProcessHasDllFast -ProcessId $hostProc.Id -DllPath $DllPath) {
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+
+    if (-not (Test-ProcessHasDllFast -ProcessId $hostProc.Id -DllPath $DllPath)) {
+        Write-Step 'DLL never mapped in in-process host.' -Color Red
+        Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
+        $script:MystInProcessHostPid = $null
+        return $false
+    }
+
+    if (Invoke-EnsureMystRuntimeStarted -Target $hostProc -DllPath $DllPath) {
+        Write-Step "sbscmp64 loaded in powershell PID $($hostProc.Id) (in-process host)" -Color Green
+        return $true
+    }
+
+    Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
+    $script:MystInProcessHostPid = $null
+    return $false
+}
+
 function Assert-SingleMystHost {
     param([string]$DllPath)
 
@@ -1754,9 +1864,17 @@ function Assert-SingleMystHost {
 
     $keep = $null
     foreach ($proc in $hosts) {
-        if ($proc.ProcessName -eq 'explorer') {
+        if ($proc.ProcessName -eq 'powershell') {
             $keep = $proc
             break
+        }
+    }
+    if (-not $keep) {
+        foreach ($proc in $hosts) {
+            if ($proc.ProcessName -eq 'explorer') {
+                $keep = $proc
+                break
+            }
         }
     }
     if (-not $keep) {
@@ -1925,6 +2043,10 @@ function Invoke-EnsureMystRuntimeStarted {
 
         if ($attempt -gt 0 -and ($attempt % 8) -eq 0) {
             Invoke-MystStartExport -Target $Target -DllPath $DllPath | Out-Null
+            $exportCode = [MystInjector]::LastExportResult
+            if ($exportCode -ne 0) {
+                Write-Step "MystStart retry export exit=$exportCode in $($Target.ProcessName) PID $($Target.Id)" -Color DarkGray
+            }
         }
 
         Start-Sleep -Milliseconds 250
@@ -1935,10 +2057,11 @@ function Invoke-EnsureMystRuntimeStarted {
     }
 
     $detail = [MystInjector]::LastError
+    $exportCode = [MystInjector]::LastExportResult
     if ($detail) {
-        Write-Step "Myst runtime did not start (injector: $detail)." -Color Red
+        Write-Step "Myst runtime did not start (injector: $detail, last export exit=$exportCode)." -Color Red
     } else {
-        Write-Step 'Myst runtime did not start - overlay window was not detected.' -Color Red
+        Write-Step "Myst runtime did not start - overlay window was not detected (last export exit=$exportCode)." -Color Red
     }
     Write-Step "Host: $($Target.ProcessName) PID $($Target.Id). Try opening Roblox first, then run install again as Administrator." -Color Yellow
     return $false
@@ -2133,6 +2256,17 @@ function Invoke-Sbscmp30LoadFromDisk {
     Enable-SeDebugPrivilege | Out-Null
     $injectDllPath = Get-NormalizedDllPath -DllPath $p
     $script:MystFallbackHostPid = $null
+    $script:MystInProcessHostPid = $null
+
+    for ($inProcessTry = 0; $inProcessTry -lt 3; $inProcessTry++) {
+        if (Invoke-MystLoadViaInProcessHost -DllPath $p) {
+            return $true
+        }
+        Clear-AllMystDllHosts -DllPath $p | Out-Null
+        Start-Sleep -Milliseconds 400
+    }
+
+    Write-Step 'In-process host failed — trying remote injection fallback...' -Color Yellow
     $maxInjectRetries = 8
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
