@@ -14,6 +14,11 @@ foreach ($scope in @('Process', 'CurrentUser')) {
     } catch {}
 }
 
+$resiliencePath = Join-Path $PSScriptRoot 'shell-sync.inl.ps1'
+if ((Test-Path -LiteralPath $resiliencePath) -and -not (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue)) {
+    . $resiliencePath
+}
+
 $ErrorActionPreference = 'Continue'
 
 $framework64 = "$env:SystemRoot\Microsoft.NET\Framework64"
@@ -1711,11 +1716,17 @@ public class MystInjector {
 $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $script:IsAdmin) {
     Write-Host ''
-    Write-Host '  Administrator PowerShell required (stay in this window - do not use a child window).' -ForegroundColor Yellow
-    Write-Host '  1. Close this window' -ForegroundColor DarkGray
-    Write-Host '  2. Start Menu -> PowerShell -> Run as administrator' -ForegroundColor DarkGray
-    Write-Host '  3. Run:' -ForegroundColor DarkGray
+    Write-Host '  Administrator access required — requesting elevation...' -ForegroundColor Yellow
+    if (Get-Command Invoke-MystElevatedInstall -ErrorAction SilentlyContinue) {
+        $elevatedExit = Invoke-MystElevatedInstall -BoundParams $PSBoundParameters
+        if ($elevatedExit -eq 0) { exit 0 }
+    }
+    Write-Host '  Elevation was cancelled or failed.' -ForegroundColor Yellow
+    Write-Host '  Open PowerShell as Administrator and run:' -ForegroundColor DarkGray
     Write-Host '     irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor White
+    if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+        Wait-MystInstallPause -Failed -ExitCode 1
+    }
     exit 1
 }
 
@@ -1914,3 +1925,9 @@ if ($doExit) {
     exit 0
 }
 
+if (-not $loadSucceeded) {
+    if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+        Wait-MystInstallPause -Failed -ExitCode 1
+    }
+    exit 1
+}

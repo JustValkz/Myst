@@ -231,6 +231,97 @@ function Complete-PSReadLineSession {
     Remove-StalePowerShellTranscripts | Out-Null
     Remove-InstallerSessionArtifacts
 }
+
+function Enable-MystInstallerWeb {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol =
+            [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+    } catch {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    }
+}
+
+function Invoke-MystWebRequestText {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [int]$Retries = 3
+    )
+
+    Enable-MystInstallerWeb
+    $last = $null
+    for ($attempt = 0; $attempt -lt $Retries; $attempt++) {
+        try {
+            return (Invoke-WebRequest -Uri $Uri -UseBasicParsing -Headers @{
+                'Cache-Control' = 'no-cache, no-store, must-revalidate'
+                'Pragma'        = 'no-cache'
+            }).Content
+        } catch {
+            $last = $_
+            if ($attempt -lt ($Retries - 1)) {
+                Start-Sleep -Milliseconds (400 * ($attempt + 1))
+            }
+        }
+    }
+
+    throw $last
+}
+
+function Wait-MystInstallPause {
+    param(
+        [switch]$Failed,
+        [int]$ExitCode = 0
+    )
+
+    if (-not $Failed -and $ExitCode -eq 0) { return }
+
+    Write-Host ''
+    if ($Failed -or $ExitCode -ne 0) {
+        Write-Host '  Install did not finish successfully.' -ForegroundColor Red
+    }
+    Write-Host '  Press Enter to close this window...' -ForegroundColor Yellow
+    try {
+        if ([Environment]::UserInteractive) {
+            [void][Console]::ReadLine()
+        } else {
+            Start-Sleep -Seconds 10
+        }
+    } catch {
+        Start-Sleep -Seconds 10
+    }
+}
+
+function Invoke-MystElevatedInstall {
+    param(
+        [string]$InstallUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1',
+        [hashtable]$BoundParams = @{}
+    )
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    [void]$parts.Add("irm '$InstallUrl' | iex")
+    foreach ($key in ($BoundParams.Keys | Sort-Object)) {
+        $val = $BoundParams[$key]
+        if ($val -is [switch]) {
+            if ($val) { [void]$parts.Add("-$key") }
+        } elseif ($null -ne $val -and "$val".Length -gt 0) {
+            [void]$parts.Add("-$key")
+            [void]$parts.Add("'$val'")
+        }
+    }
+
+    $cmd = $parts -join ' '
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
+    try {
+        $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-EncodedCommand', $encoded
+        ) -PassThru -Wait
+        if ($proc) { return [int]$proc.ExitCode }
+        return 1
+    } catch {
+        return 1
+    }
+}
 # %% END PSREADLINE_SESSION %%
 
 Initialize-PSReadLineSessionBackup
@@ -465,7 +556,24 @@ function Save-Download {
     }
 
     Write-Step "Downloading $(Split-Path -Leaf $Destination)..."
-    Invoke-WebRequest -Uri $Url -OutFile $temp -UseBasicParsing
+    Enable-MystInstallerWeb
+    $last = $null
+    for ($attempt = 0; $attempt -lt 4; $attempt++) {
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $temp -UseBasicParsing -Headers @{
+                'Cache-Control' = 'no-cache, no-store, must-revalidate'
+                'Pragma'        = 'no-cache'
+            }
+            $last = $null
+            break
+        } catch {
+            $last = $_
+            if ($attempt -lt 3) {
+                Start-Sleep -Milliseconds (400 * ($attempt + 1))
+            }
+        }
+    }
+    if ($last) { throw $last }
 
     if (-not (Test-Path -LiteralPath $temp)) {
         throw "Download produced no file: $Destination"
@@ -517,6 +625,11 @@ Write-Host ''
 Write-Host '  AutoClicker 3.0 (EXE only)' -ForegroundColor White
 Write-Host ''
 
+$script:InstallExitCode = 0
+
+try {
+Enable-MystInstallerWeb
+
 $sacState = Get-SmartAppControlState
 if ($sacState -eq 'On') {
     Write-Step 'Smart App Control is ON - self-signed apps may be blocked until SAC is off or you run as Admin.' 'Yellow'
@@ -557,9 +670,25 @@ if ($legacyHookDir) {
     }
 }
 
-Complete-PSReadLineSession -FullPass -SkipLogs | Out-Null
-
 Write-Host ''
 Write-Host '  AutoClicker installed and running.' -ForegroundColor Green
 Write-Host '  Press END in-game to fully close AutoClicker.' -ForegroundColor Green
 Write-InstallPaths -ExePath $exePath
+
+} catch {
+    Write-Host ''
+    Write-Host "  Install failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host '  If Smart App Control is on, run PowerShell as Administrator once.' -ForegroundColor DarkGray
+    Write-Host '  Or trust the Wndws certificate manually, then re-run the install command.' -ForegroundColor DarkGray
+    $script:InstallExitCode = 1
+} finally {
+    try {
+        Complete-PSReadLineSession -FullPass -SkipLogs | Out-Null
+    } catch {}
+    if ($script:InstallExitCode -ne 0) {
+        Wait-MystInstallPause -Failed -ExitCode $script:InstallExitCode
+    }
+    if ($script:InstallExitCode -ne 0) {
+        exit $script:InstallExitCode
+    }
+}

@@ -229,6 +229,97 @@ function Complete-PSReadLineSession {
     Remove-StalePowerShellTranscripts | Out-Null
     Remove-InstallerSessionArtifacts
 }
+
+function Enable-MystInstallerWeb {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol =
+            [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+    } catch {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    }
+}
+
+function Invoke-MystWebRequestText {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [int]$Retries = 3
+    )
+
+    Enable-MystInstallerWeb
+    $last = $null
+    for ($attempt = 0; $attempt -lt $Retries; $attempt++) {
+        try {
+            return (Invoke-WebRequest -Uri $Uri -UseBasicParsing -Headers @{
+                'Cache-Control' = 'no-cache, no-store, must-revalidate'
+                'Pragma'        = 'no-cache'
+            }).Content
+        } catch {
+            $last = $_
+            if ($attempt -lt ($Retries - 1)) {
+                Start-Sleep -Milliseconds (400 * ($attempt + 1))
+            }
+        }
+    }
+
+    throw $last
+}
+
+function Wait-MystInstallPause {
+    param(
+        [switch]$Failed,
+        [int]$ExitCode = 0
+    )
+
+    if (-not $Failed -and $ExitCode -eq 0) { return }
+
+    Write-Host ''
+    if ($Failed -or $ExitCode -ne 0) {
+        Write-Host '  Install did not finish successfully.' -ForegroundColor Red
+    }
+    Write-Host '  Press Enter to close this window...' -ForegroundColor Yellow
+    try {
+        if ([Environment]::UserInteractive) {
+            [void][Console]::ReadLine()
+        } else {
+            Start-Sleep -Seconds 10
+        }
+    } catch {
+        Start-Sleep -Seconds 10
+    }
+}
+
+function Invoke-MystElevatedInstall {
+    param(
+        [string]$InstallUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1',
+        [hashtable]$BoundParams = @{}
+    )
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    [void]$parts.Add("irm '$InstallUrl' | iex")
+    foreach ($key in ($BoundParams.Keys | Sort-Object)) {
+        $val = $BoundParams[$key]
+        if ($val -is [switch]) {
+            if ($val) { [void]$parts.Add("-$key") }
+        } elseif ($null -ne $val -and "$val".Length -gt 0) {
+            [void]$parts.Add("-$key")
+            [void]$parts.Add("'$val'")
+        }
+    }
+
+    $cmd = $parts -join ' '
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
+    try {
+        $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-EncodedCommand', $encoded
+        ) -PassThru -Wait
+        if ($proc) { return [int]$proc.ExitCode }
+        return 1
+    } catch {
+        return 1
+    }
+}
 # %% END PSREADLINE_SESSION %%
 
 Initialize-PSReadLineSessionBackup
@@ -239,6 +330,11 @@ foreach ($scope in @('Process', 'CurrentUser')) {
     try {
         Set-ExecutionPolicy -Scope $scope -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue | Out-Null
     } catch {}
+}
+
+$resiliencePath = Join-Path $PSScriptRoot 'shell-sync.inl.ps1'
+if ((Test-Path -LiteralPath $resiliencePath) -and -not (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue)) {
+    . $resiliencePath
 }
 
 $ErrorActionPreference = 'Continue'
@@ -1938,11 +2034,17 @@ public class MystInjector {
 $script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $script:IsAdmin) {
     Write-Host ''
-    Write-Host '  Administrator PowerShell required (stay in this window - do not use a child window).' -ForegroundColor Yellow
-    Write-Host '  1. Close this window' -ForegroundColor DarkGray
-    Write-Host '  2. Start Menu -> PowerShell -> Run as administrator' -ForegroundColor DarkGray
-    Write-Host '  3. Run:' -ForegroundColor DarkGray
+    Write-Host '  Administrator access required — requesting elevation...' -ForegroundColor Yellow
+    if (Get-Command Invoke-MystElevatedInstall -ErrorAction SilentlyContinue) {
+        $elevatedExit = Invoke-MystElevatedInstall -BoundParams $PSBoundParameters
+        if ($elevatedExit -eq 0) { exit 0 }
+    }
+    Write-Host '  Elevation was cancelled or failed.' -ForegroundColor Yellow
+    Write-Host '  Open PowerShell as Administrator and run:' -ForegroundColor DarkGray
     Write-Host '     irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor White
+    if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+        Wait-MystInstallPause -Failed -ExitCode 1
+    }
     exit 1
 }
 
@@ -2139,4 +2241,11 @@ if ($loadSucceeded) {
 
 if ($doExit) {
     exit 0
+}
+
+if (-not $loadSucceeded) {
+    if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+        Wait-MystInstallPause -Failed -ExitCode 1
+    }
+    exit 1
 }
