@@ -1799,9 +1799,11 @@ function Get-MystInjectionCandidates {
         return @($broker)
     }
 
-    $psHost = Start-MystPowerShellHost
-    if ($psHost -and -not (Test-ProcessHasDll -ProcessId $psHost.Id -DllPath $DllPath)) {
-        return @($psHost)
+    if ($script:MystFallbackHostPid) {
+        $fallback = Get-Process -Id $script:MystFallbackHostPid -ErrorAction SilentlyContinue
+        if ($fallback -and -not $fallback.HasExited -and -not (Test-ProcessHasDll -ProcessId $fallback.Id -DllPath $DllPath)) {
+            return @($fallback)
+        }
     }
 
     foreach ($proc in @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
@@ -1813,25 +1815,8 @@ function Get-MystInjectionCandidates {
     return @()
 }
 
-function Start-MystPowerShellHost {
-    Write-Step 'Starting dedicated Myst host (PowerShell)...' -Color Gray
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $psi.Arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -Command "while($true){Start-Sleep -Seconds 3600}"'
-    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-    $psi.CreateNoWindow = $true
-    $psi.UseShellExecute = $false
-    try {
-        $proc = [System.Diagnostics.Process]::Start($psi)
-        Start-Sleep -Milliseconds 400
-        return $proc
-    } catch {
-        return $null
-    }
-}
-
 function Start-MystFallbackHost {
-    Write-Step 'Starting dedicated Myst host (cmd)...' -Color Gray
+    Write-Step 'Starting fallback Myst host...' -Color Gray
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = Join-Path $env:SystemRoot 'System32\cmd.exe'
     $psi.Arguments = '/c ping -n 86400 127.0.0.1 >nul'
@@ -2432,18 +2417,7 @@ function Invoke-Sbscmp30LoadFromDisk {
         Write-Step "Myst DLL already mapped in $($hostProc.ProcessName) PID $($hostProc.Id) - ensuring runtime..." -Color Yellow
         if (Test-MystOverlayStarted -Target $hostProc -DllPath $p) {
             Write-Step 'Myst overlay already running.' -Color Green
-            if ($hostProc.Id -eq $PID) {
-                $script:MystLoadedInCurrentShell = $true
-                $script:MystInProcessHostPid = $PID
-            }
             return $true
-        }
-
-        if ($hostProc.Id -eq $PID) {
-            Write-MystDiag 'Myst mapped in this shell but overlay down - calling MystStart again.'
-            if (Invoke-MystLoadInCurrentShell -DllPath $p) {
-                return $true
-            }
         }
 
         Invoke-MystRequestUnloadExport -Target $hostProc -DllPath $p | Out-Null
@@ -2461,22 +2435,6 @@ function Invoke-Sbscmp30LoadFromDisk {
     Enable-SeDebugPrivilege | Out-Null
     $injectDllPath = Get-NormalizedDllPath -DllPath $p
     $script:MystFallbackHostPid = $null
-    $script:MystInProcessHostPid = $null
-    $script:MystLoadedInCurrentShell = $false
-
-    if (Invoke-MystLoadInCurrentShell -DllPath $p) {
-        return $true
-    }
-
-    for ($visibleTry = 0; $visibleTry -lt 2; $visibleTry++) {
-        if (Invoke-MystLoadViaVisibleHost -DllPath $p) {
-            return $true
-        }
-        Clear-AllMystDllHosts -DllPath $p | Out-Null
-        Start-Sleep -Milliseconds 400
-    }
-
-    Write-Step 'PowerShell load failed - trying remote injection fallback...' -Color Yellow
     $maxInjectRetries = 8
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
@@ -2496,7 +2454,7 @@ function Invoke-Sbscmp30LoadFromDisk {
 
         $candidates = @(Get-MystInjectionCandidates -DllPath $p)
 
-        # Dedicated cmd host first, then explorer, then RuntimeBroker.
+        # RuntimeBroker first, then explorer; cmd fallback only if both refuse.
         if ($candidates.Count -eq 0 -and -not $script:MystFallbackHostPid) {
             $fallback = Start-MystFallbackHost
             if ($fallback) {
@@ -3220,23 +3178,7 @@ if ($loadSucceeded) {
 
     Write-Host ''
     Write-Host '  Myst is loaded - press Insert in-game to open the menu.' -ForegroundColor Green
-
-    if ($script:MystLoadedInCurrentShell) {
-        Write-Host ''
-        Write-Host '  Myst is running in THIS PowerShell window.' -ForegroundColor Yellow
-        Write-Host '  Keep this window open while you play.' -ForegroundColor Yellow
-        if ($env:MYST_INSTALL_NO_BLOCK -eq '1') {
-            Write-Host '  (non-blocking test mode)' -ForegroundColor DarkGray
-        } else {
-            Write-Host '  Press Enter when you want to unload and exit...' -ForegroundColor Yellow
-            try {
-                [void][Console]::ReadLine()
-            } catch {
-                Start-Sleep -Seconds 3600
-            }
-        }
-        exit 0
-    }
+    Write-Host '  You can close this PowerShell window; Myst runs in RuntimeBroker/explorer.' -ForegroundColor DarkGray
 
     if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
         Wait-MystInstallPause -Success
