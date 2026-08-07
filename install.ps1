@@ -69,7 +69,24 @@ function Wait-MystInstallPause {
     }
 }
 
-$bundleUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install-bundle.ps1'
+function Get-MystBundleUrl {
+    $base = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install-bundle.ps1'
+    $cacheHeaders = @{
+        'Cache-Control' = 'no-cache, no-store, must-revalidate'
+        'Pragma'        = 'no-cache'
+    }
+
+    try {
+        $manifest = Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json' -Headers $cacheHeaders
+        if ($manifest -and $manifest.version) {
+            return "$base`?v=$($manifest.version)"
+        }
+    } catch {}
+
+    return "$base`?t=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
+}
+
+$bundleUrl = Get-MystBundleUrl
 $exitCode = 0
 
 try {
@@ -96,7 +113,11 @@ try {
 } catch {
     Write-Host ''
     Write-Host "  Installer failed: $($_.Exception.Message)" -ForegroundColor Red
+    if ($_.InvocationInfo -and $_.InvocationInfo.ScriptLineNumber) {
+        Write-Host "  (line $($_.InvocationInfo.ScriptLineNumber): $($_.InvocationInfo.Line.Trim()))" -ForegroundColor DarkGray
+    }
     Write-Host '  Check your internet connection and try again in Administrator PowerShell.' -ForegroundColor DarkGray
+    Write-Host '  If this persists, raw GitHub may be serving a cached bundle — wait 1 minute and retry.' -ForegroundColor DarkGray
     $exitCode = 1
     Wait-MystInstallPause -Failed -ExitCode $exitCode
     exit $exitCode
