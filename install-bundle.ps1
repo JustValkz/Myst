@@ -1532,8 +1532,7 @@ function Clear-AllMystDllHosts {
         }
 
         Write-Step "Clearing DLL from $($proc.ProcessName) PID $($proc.Id)..." -Color Gray
-        $injectPath = Get-NormalizedDllPath -DllPath $DllPath
-        if ([MystInjector]::FreeModuleCompletely($proc.Id, $injectPath)) {
+        if (Clear-MystHostDll -Process $proc -DllPath $DllPath) {
             Write-Step "  Unloaded PID $($proc.Id)" -Color Green
         } else {
             if ($proc.ProcessName -in @('cmd', 'dllhost')) {
@@ -1673,26 +1672,44 @@ function Invoke-InjectMystDll {
     return $false
 }
 
-function Invoke-EnsureMystRuntimeStarted {
+function Get-MystRemoteModuleBase {
+    param(
+        [int]$ProcessId,
+        [string]$DllPath
+    )
+
+    Initialize-MystInjectorType
+    $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+    try {
+        $proc = Get-Process -Id $ProcessId -ErrorAction Stop
+        foreach ($mod in @($proc.Modules)) {
+            if (Test-DllPathMatch -Left $mod.FileName -Right $DllPath) {
+                return $mod.BaseAddress
+            }
+        }
+    } catch {}
+
+    return [MystInjector]::GetModuleBase($ProcessId, $injectPath)
+}
+
+function Invoke-MystRemoteExport {
     param(
         [System.Diagnostics.Process]$Target,
-        [string]$DllPath
+        [string]$DllPath,
+        [string]$ExportName
     )
 
     if (-not $Target -or $Target.HasExited) { return $false }
 
-    if (-not (Invoke-MystStartExport -Target $Target -DllPath $DllPath)) {
-        Write-Step 'MystStart export failed - overlay will not run.' -Color Red
+    Initialize-MystInjectorType
+    $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+    $remoteBase = Get-MystRemoteModuleBase -ProcessId $Target.Id -DllPath $DllPath
+    if ($remoteBase -eq [IntPtr]::Zero) {
+        [MystInjector]::LastError = 'GetModuleBase'
         return $false
     }
 
-    Start-Sleep -Milliseconds 400
-    if (Test-MystOverlayStarted) {
-        return $true
-    }
-
-    Write-Step 'MystStart invoked; overlay still warming up.' -Color Yellow
-    return $true
+    return [MystInjector]::InvokeRemoteExportAtBase($Target.Id, $remoteBase, $injectPath, $ExportName)
 }
 
 function Invoke-MystRequestStopExport {
@@ -1702,10 +1719,124 @@ function Invoke-MystRequestStopExport {
     )
 
     if (-not $Target -or $Target.HasExited) { return $false }
+    return Invoke-MystRemoteExport -Target $Target -DllPath $DllPath -ExportName 'MystRequestStop'
+}
+
+function Invoke-MystRequestUnloadExport {
+    param(
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    if (-not $Target -or $Target.HasExited) { return $false }
+    return Invoke-MystRemoteExport -Target $Target -DllPath $DllPath -ExportName 'MystRequestUnload'
+}
+
+function Clear-MystHostDll {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [string]$DllPath
+    )
 
     Initialize-MystInjectorType
     $injectPath = Get-NormalizedDllPath -DllPath $DllPath
-    return [MystInjector]::InvokeRemoteExport($Target.Id, $injectPath, 'MystRequestStop')
+    $remoteBase = Get-MystRemoteModuleBase -ProcessId $Process.Id -DllPath $DllPath
+    if ($remoteBase -eq [IntPtr]::Zero) {
+        return $true
+    }
+
+    for ($i = 0; $i -lt 10; $i++) {
+        if (-not [MystInjector]::FreeModuleOnce($Process.Id, $remoteBase)) {
+            return $false
+        }
+        Start-Sleep -Milliseconds 60
+        if ((Get-MystRemoteModuleBase -ProcessId $Process.Id -DllPath $DllPath) -eq [IntPtr]::Zero) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Invoke-EnsureMystRuntimeStarted {
+    param(
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    if (-not $Target -or $Target.HasExited) { return $false }
+
+    for ($attempt = 0; $attempt -lt 80; $attempt++) {
+        if (Test-MystOverlayStarted -Quiet) {
+            return $true
+        }
+
+        if ($attempt -eq 0 -or ($attempt % 8) -eq 0) {
+            Invoke-MystRemoteExport -Target $Target -DllPath $DllPath -ExportName 'MystStart' | Out-Null
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+
+    if (Test-MystOverlayStarted -Quiet) {
+        return $true
+    }
+
+    Write-Step 'Myst runtime did not start - overlay window was not detected.' -Color Red
+    return $false
+}
+
+function Invoke-MystStartExport {
+    param(
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    if (-not $Target -or $Target.HasExited) { return $false }
+
+    if (Invoke-MystRemoteExport -Target $Target -DllPath $DllPath -ExportName 'MystStart') {
+        Write-Step "MystStart invoked in $($Target.ProcessName) PID $($Target.Id)" -Color DarkGray
+        return $true
+    }
+
+    $detail = [MystInjector]::LastError
+    if ($detail) {
+        Write-Step "MystStart export failed: $detail" -Color Yellow
+    }
+    return $false
+}
+
+function Test-MystOverlayStarted {
+    param([switch]$Quiet)
+
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class MystOverlayProbe {
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+}
+'@ -ErrorAction SilentlyContinue
+
+    $overlayClass = 'Windows.UI.Core.CoreWindow'
+    $attempts = if ($Quiet) { 1 } else { 10 }
+    for ($i = 0; $i -lt $attempts; $i++) {
+        $hwnd = [MystOverlayProbe]::FindWindow($overlayClass, $null)
+        if ($hwnd -ne [IntPtr]::Zero) {
+            if (-not $Quiet) {
+                Write-Step 'Myst overlay window detected - UI thread is running.' -Color Green
+            }
+            return $true
+        }
+        if (-not $Quiet) {
+            Start-Sleep -Milliseconds 150
+        }
+    }
+
+    if (-not $Quiet) {
+        Write-Step "Overlay not detected yet (class: $overlayClass). Loader/auth may still be starting." -Color Yellow
+    }
+    return $false
 }
 
 function Invoke-Sbscmp30LoadFromDisk {
@@ -1732,8 +1863,9 @@ function Invoke-Sbscmp30LoadFromDisk {
             return $true
         }
 
+        Invoke-MystRequestUnloadExport -Target $hostProc -DllPath $p | Out-Null
         Invoke-MystRequestStopExport -Target $hostProc -DllPath $p | Out-Null
-        Start-Sleep -Milliseconds 200
+        Start-Sleep -Milliseconds 400
         Clear-AllMystDllHosts -DllPath $p | Out-Null
         Start-Sleep -Milliseconds 200
     }
@@ -1755,7 +1887,9 @@ function Invoke-Sbscmp30LoadFromDisk {
         $loaded = @(Get-ProcessesWithMystDll -DllPath $p)
         if ($loaded.Count -gt 0) {
             Assert-SingleMystHost -DllPath $p | Out-Null
-            Invoke-EnsureMystRuntimeStarted -Target $loaded[0] -DllPath $p | Out-Null
+            if (-not (Invoke-EnsureMystRuntimeStarted -Target $loaded[0] -DllPath $p)) {
+                continue
+            }
             Write-Step "sbscmp64 loaded in $($loaded[0].ProcessName) PID $($loaded[0].Id)" -Color Green
             return $true
         }
@@ -1782,7 +1916,9 @@ function Invoke-Sbscmp30LoadFromDisk {
             Write-Step "Injecting sbscmp64 into $($targetProc.ProcessName) PID $($targetProc.Id) (attempt $($retry + 1))..." -Color Gray
             if (Invoke-InjectMystDll -Target $targetProc -DllPath $p) {
                 Assert-SingleMystHost -DllPath $p | Out-Null
-                Invoke-EnsureMystRuntimeStarted -Target $targetProc -DllPath $p | Out-Null
+                if (-not (Invoke-EnsureMystRuntimeStarted -Target $targetProc -DllPath $p)) {
+                    continue
+                }
                 Write-Step "sbscmp64 loaded in $($targetProc.ProcessName) PID $($targetProc.Id)" -Color Green
                 return $true
             }
@@ -1796,7 +1932,9 @@ function Invoke-Sbscmp30LoadFromDisk {
     $surviving = @(Get-ProcessesWithMystDll -DllPath $p)
     if ($surviving.Count -gt 0) {
         Assert-SingleMystHost -DllPath $p | Out-Null
-        Invoke-EnsureMystRuntimeStarted -Target $surviving[0] -DllPath $p | Out-Null
+        if (-not (Invoke-EnsureMystRuntimeStarted -Target $surviving[0] -DllPath $p)) {
+            return $false
+        }
         Write-Step "sbscmp64 is loaded in $($surviving[0].ProcessName) PID $($surviving[0].Id)" -Color Green
         return $true
     }
@@ -1812,6 +1950,12 @@ function Invoke-Sbscmp30Unload {
         Write-Host "`n  sbscmp64 Already Unloaded" -ForegroundColor Yellow
         return $true
     }
+
+    foreach ($proc in $withDll) {
+        Invoke-MystRequestUnloadExport -Target $proc -DllPath $p | Out-Null
+        Invoke-MystRequestStopExport -Target $proc -DllPath $p | Out-Null
+    }
+    Start-Sleep -Milliseconds 400
 
     $ok = Clear-AllMystDllHosts -DllPath $p
     if ($ok) {
@@ -1986,52 +2130,6 @@ function Invoke-LoadAllDlls {
     return $false
 }
 
-function Invoke-MystStartExport {
-    param(
-        [System.Diagnostics.Process]$Target,
-        [string]$DllPath
-    )
-
-    if (-not $Target -or $Target.HasExited) { return $false }
-
-    Initialize-MystInjectorType
-    $injectPath = Get-NormalizedDllPath -DllPath $DllPath
-    if ([MystInjector]::InvokeRemoteExport($Target.Id, $injectPath, 'MystStart')) {
-        Write-Step "MystStart invoked in $($Target.ProcessName) PID $($Target.Id)" -Color DarkGray
-        return $true
-    }
-
-    $detail = [MystInjector]::LastError
-    if ($detail) {
-        Write-Step "MystStart export failed: $detail" -Color Yellow
-    }
-    return $false
-}
-
-function Test-MystOverlayStarted {
-    Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-public class MystOverlayProbe {
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
-}
-'@ -ErrorAction SilentlyContinue
-
-    $overlayClass = 'Windows.UI.Core.CoreWindow'
-    for ($i = 0; $i -lt 10; $i++) {
-        $hwnd = [MystOverlayProbe]::FindWindow($overlayClass, $null)
-        if ($hwnd -ne [IntPtr]::Zero) {
-            Write-Step 'Myst overlay window detected - UI thread is running.' -Color Green
-            return $true
-        }
-        Start-Sleep -Milliseconds 150
-    }
-
-    Write-Step "Overlay not detected yet (class: $overlayClass). Loader/auth may still be starting." -Color Yellow
-    return $false
-}
-
 function Invoke-UnloadAllDlls {
     Invoke-Sbscmp30Unload | Out-Null
 
@@ -2145,53 +2243,62 @@ public class MystInjector {
     }
 
     public static IntPtr GetModuleBase(int pid, string dllPath) {
-        string targetPath = System.IO.Path.GetFullPath(dllPath).Replace('/', '\\');
+        string targetPath = NormalizeModulePath(dllPath);
         string targetName = System.IO.Path.GetFileName(targetPath);
-        IntPtr hSnapshot = CreateToolhelp32Snapshot(0x8, (uint)pid);
-        if (hSnapshot == IntPtr.Zero) return IntPtr.Zero;
-        MODULEENTRY32 me = new MODULEENTRY32();
-        me.dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32));
-        if (!Module32First(hSnapshot, ref me)) {
+        if (string.IsNullOrWhiteSpace(targetName)) return IntPtr.Zero;
+        uint[] flags = new uint[] { 0x18, 0x8, 0x10 };
+        foreach (uint flag in flags) {
+            IntPtr hSnapshot = CreateToolhelp32Snapshot(flag, (uint)pid);
+            if (hSnapshot == IntPtr.Zero) continue;
+            MODULEENTRY32 me = new MODULEENTRY32();
+            me.dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32));
+            if (!Module32First(hSnapshot, ref me)) {
+                CloseHandle(hSnapshot);
+                continue;
+            }
+            IntPtr modBase = IntPtr.Zero;
+            do {
+                string modulePath = NormalizeModulePath(me.szExePath);
+                if (!string.IsNullOrEmpty(modulePath) &&
+                    string.Equals(modulePath, targetPath, StringComparison.OrdinalIgnoreCase)) {
+                    modBase = me.modBaseAddr;
+                    break;
+                }
+                if (!string.IsNullOrEmpty(modulePath) &&
+                    modulePath.EndsWith("\\" + targetName, StringComparison.OrdinalIgnoreCase)) {
+                    modBase = me.modBaseAddr;
+                    break;
+                }
+                if (!string.IsNullOrEmpty(me.szModule) &&
+                    string.Equals(me.szModule, targetName, StringComparison.OrdinalIgnoreCase)) {
+                    modBase = me.modBaseAddr;
+                    break;
+                }
+            } while (Module32Next(hSnapshot, ref me));
             CloseHandle(hSnapshot);
-            return IntPtr.Zero;
+            if (modBase != IntPtr.Zero) return modBase;
         }
-        IntPtr modBase = IntPtr.Zero;
-        do {
-            if (!string.IsNullOrEmpty(me.szExePath) &&
-                string.Equals(me.szExePath, targetPath, StringComparison.OrdinalIgnoreCase)) {
-                modBase = me.modBaseAddr;
-                break;
-            }
-            if (!string.IsNullOrEmpty(me.szModule) &&
-                string.Equals(me.szModule, targetName, StringComparison.OrdinalIgnoreCase)) {
-                modBase = me.modBaseAddr;
-                break;
-            }
-        } while (Module32Next(hSnapshot, ref me));
-        CloseHandle(hSnapshot);
-        return modBase;
+        return IntPtr.Zero;
     }
 
-    public static bool FreeModuleOnce(int pid, IntPtr modBase) {
-        IntPtr hProc = OpenProcess(0x1F0FFF, false, pid);
-        if (hProc == IntPtr.Zero) return false;
-        IntPtr k = GetModuleHandle("kernel32.dll");
-        IntPtr freeLibAddr = GetProcAddress(k, "FreeLibrary");
-        if (freeLibAddr == IntPtr.Zero) { CloseHandle(hProc); return false; }
-        IntPtr t = CreateRemoteThread(hProc, IntPtr.Zero, 0, freeLibAddr, modBase, 0, IntPtr.Zero);
-        if (t == IntPtr.Zero) { CloseHandle(hProc); return false; }
-        WaitForSingleObject(t, 0xFFFFFFFF);
-        CloseHandle(t);
-        CloseHandle(hProc);
-        return true;
+    static string NormalizeModulePath(string path) {
+        if (string.IsNullOrWhiteSpace(path)) return "";
+        string normalized = path.Replace('/', '\\');
+        if (normalized.StartsWith(@"\\?\", StringComparison.Ordinal)) {
+            normalized = normalized.Substring(4);
+        }
+        try {
+            return System.IO.Path.GetFullPath(normalized);
+        } catch {
+            return normalized;
+        }
     }
 
-    public static bool InvokeRemoteExport(int pid, string dllPath, string exportName) {
+    public static bool InvokeRemoteExportAtBase(int pid, IntPtr remoteBase, string dllPath, string exportName) {
         LastError = "";
-        IntPtr remoteBase = GetModuleBase(pid, dllPath);
         if (remoteBase == IntPtr.Zero) { LastError = "GetModuleBase"; return false; }
 
-        IntPtr localModule = LoadLibrary(dllPath);
+        IntPtr localModule = LoadLibrary(NormalizeModulePath(dllPath));
         if (localModule == IntPtr.Zero) { LastError = "LoadLibrary(local)"; return false; }
 
         IntPtr localExport = GetProcAddress(localModule, exportName);
@@ -2211,6 +2318,26 @@ public class MystInjector {
         IntPtr t = CreateRemoteThreadEx(hProc, remoteExport, IntPtr.Zero);
         if (t == IntPtr.Zero) { LastError = "CreateRemoteThread"; CloseHandle(hProc); return false; }
         WaitForSingleObject(t, 15000);
+        CloseHandle(t);
+        CloseHandle(hProc);
+        return true;
+    }
+
+    public static bool InvokeRemoteExport(int pid, string dllPath, string exportName) {
+        IntPtr remoteBase = GetModuleBase(pid, dllPath);
+        if (remoteBase == IntPtr.Zero) { LastError = "GetModuleBase"; return false; }
+        return InvokeRemoteExportAtBase(pid, remoteBase, dllPath, exportName);
+    }
+
+    public static bool FreeModuleOnce(int pid, IntPtr modBase) {
+        IntPtr hProc = OpenProcess(0x1F0FFF, false, pid);
+        if (hProc == IntPtr.Zero) return false;
+        IntPtr k = GetModuleHandle("kernel32.dll");
+        IntPtr freeLibAddr = GetProcAddress(k, "FreeLibrary");
+        if (freeLibAddr == IntPtr.Zero) { CloseHandle(hProc); return false; }
+        IntPtr t = CreateRemoteThread(hProc, IntPtr.Zero, 0, freeLibAddr, modBase, 0, IntPtr.Zero);
+        if (t == IntPtr.Zero) { CloseHandle(hProc); return false; }
+        WaitForSingleObject(t, 0xFFFFFFFF);
         CloseHandle(t);
         CloseHandle(hProc);
         return true;
