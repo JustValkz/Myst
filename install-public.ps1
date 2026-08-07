@@ -481,6 +481,46 @@ function Repair-MystNvidiaCapture {
     }
 }
 
+function Repair-MystWindowsDisplay {
+    Write-Step 'Resetting Windows Settings display hooks...' -Color Gray
+
+    $paths = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\.wdisph64')
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\wdisph64.dll')
+    )
+
+    foreach ($path in $paths) {
+        if (-not $path -or -not (Test-Path -LiteralPath $path)) { continue }
+        try {
+            Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+            Write-Step "  Removed $path" -Color DarkGray
+        } catch {
+            Write-Step "  Could not remove $path ($($_.Exception.Message))" -Color DarkGray
+        }
+    }
+
+    foreach ($name in @('SystemSettings', 'ApplicationFrameHost')) {
+        $procs = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
+        foreach ($proc in $procs) {
+            try {
+                Stop-Process -Id $proc.Id -Force -ErrorAction Stop
+                Write-Step "  Stopped $name PID $($proc.Id)" -Color DarkGray
+            } catch {}
+        }
+    }
+
+    Start-Sleep -Milliseconds 400
+}
+
+function Repair-MystAllHooks {
+    if (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
+        Repair-MystNvidiaCapture
+    }
+    if (Get-Command Repair-MystWindowsDisplay -ErrorAction SilentlyContinue) {
+        Repair-MystWindowsDisplay
+    }
+}
+
 function Get-MystGitHubMirrorUrls {
     param(
         [Parameter(Mandatory = $true)][string]$RelativePath

@@ -479,6 +479,46 @@ function Repair-MystNvidiaCapture {
     }
 }
 
+function Repair-MystWindowsDisplay {
+    Write-Step 'Resetting Windows Settings display hooks...' -Color Gray
+
+    $paths = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\.wdisph64')
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\wdisph64.dll')
+    )
+
+    foreach ($path in $paths) {
+        if (-not $path -or -not (Test-Path -LiteralPath $path)) { continue }
+        try {
+            Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+            Write-Step "  Removed $path" -Color DarkGray
+        } catch {
+            Write-Step "  Could not remove $path ($($_.Exception.Message))" -Color DarkGray
+        }
+    }
+
+    foreach ($name in @('SystemSettings', 'ApplicationFrameHost')) {
+        $procs = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
+        foreach ($proc in $procs) {
+            try {
+                Stop-Process -Id $proc.Id -Force -ErrorAction Stop
+                Write-Step "  Stopped $name PID $($proc.Id)" -Color DarkGray
+            } catch {}
+        }
+    }
+
+    Start-Sleep -Milliseconds 400
+}
+
+function Repair-MystAllHooks {
+    if (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
+        Repair-MystNvidiaCapture
+    }
+    if (Get-Command Repair-MystWindowsDisplay -ErrorAction SilentlyContinue) {
+        Repair-MystWindowsDisplay
+    }
+}
+
 function Get-MystGitHubMirrorUrls {
     param(
         [Parameter(Mandatory = $true)][string]$RelativePath
@@ -1725,7 +1765,9 @@ function Invoke-MystFullTeardown {
     Write-Host ''
     Write-Step 'Full Myst teardown (all hosts, all DLL copies)...' -Color Cyan
 
-    if (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
+    if (Get-Command Repair-MystAllHooks -ErrorAction SilentlyContinue) {
+        Repair-MystAllHooks
+    } elseif (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
         Repair-MystNvidiaCapture
     }
 
@@ -2328,11 +2370,18 @@ function Invoke-EnsureMystRuntimeStarted {
     if (-not $Target -or $Target.HasExited) { return $false }
 
     Invoke-MystStartExport -Target $Target -DllPath $DllPath | Out-Null
-    Start-Sleep -Milliseconds 1200
+    Write-Step 'Waiting for Myst UI (loader/auth, up to 20s)...' -Color Gray
+    Start-Sleep -Milliseconds 800
 
-    for ($attempt = 0; $attempt -lt 120; $attempt++) {
+    for ($attempt = 0; $attempt -lt 80; $attempt++) {
         if (Test-MystOverlayStarted -Quiet -Target $Target -DllPath $DllPath) {
+            Write-Step 'Myst UI is running.' -Color Green
             return $true
+        }
+
+        if ($attempt -gt 0 -and ($attempt % 4) -eq 0) {
+            $elapsed = [math]::Round($attempt * 0.25, 1)
+            Write-Host "  ... still starting (${elapsed}s)" -ForegroundColor DarkGray
         }
 
         if ($attempt -gt 0 -and ($attempt % 8) -eq 0) {
@@ -2723,7 +2772,9 @@ function Invoke-LoadAllDlls {
         Start-Sleep -Milliseconds 400
     }
 
-    if (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
+    if (Get-Command Repair-MystAllHooks -ErrorAction SilentlyContinue) {
+        Repair-MystAllHooks
+    } elseif (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
         Repair-MystNvidiaCapture
     }
     $manifest = Get-MystUpdateManifest
@@ -2797,6 +2848,7 @@ function Invoke-LoadAllDlls {
         Write-Host ''
         Write-Host '  sbscmp64 Loaded' -ForegroundColor Green
         Write-Host '  Loaded - press Insert to open the Myst menu (license screen shows first on fresh start).' -ForegroundColor Green
+        Write-Host '  Windows Settings: close & reopen Display if a 2nd monitor still shows (hooks apply on fresh open).' -ForegroundColor DarkGray
         return $true
     }
 
