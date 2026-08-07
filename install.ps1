@@ -20,24 +20,63 @@ function Enable-MystInstallerWeb {
     }
 }
 
+function Get-MystUnixTimestamp {
+    return [int64]([DateTime]::UtcNow - [DateTime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)).TotalSeconds
+}
+
+function Get-MystBundleUrls {
+    $cacheHeaders = @{
+        'Cache-Control' = 'no-cache, no-store, must-revalidate'
+        'Pragma'        = 'no-cache'
+    }
+
+    $version = $null
+    try {
+        Enable-MystInstallerWeb
+        $manifest = Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json' -Headers $cacheHeaders
+        if ($manifest -and $manifest.version) {
+            $version = [string]$manifest.version
+        }
+    } catch {}
+
+    $stamp = Get-MystUnixTimestamp
+    $query = if ($version) { "v=$version&t=$stamp" } else { "t=$stamp" }
+
+    return @(
+        "https://raw.githubusercontent.com/JustValkz/Myst/main/install-bundle.ps1?$query"
+        "https://cdn.jsdelivr.net/gh/JustValkz/Myst@main/install-bundle.ps1?$query"
+    )
+}
+
 function Invoke-MystWebRequestText {
     param(
-        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(ParameterSetName = 'SingleUri')][string]$Uri,
+        [Parameter(ParameterSetName = 'MultiUri')][string[]]$Uris,
         [int]$Retries = 3
     )
 
+    if ($PSCmdlet.ParameterSetName -eq 'SingleUri' -and $Uri) {
+        $Uris = @($Uri)
+    }
+    if (-not $Uris -or $Uris.Count -eq 0) {
+        throw 'No download URL provided.'
+    }
+
     Enable-MystInstallerWeb
     $last = $null
-    for ($attempt = 0; $attempt -lt $Retries; $attempt++) {
-        try {
-            return (Invoke-WebRequest -Uri $Uri -UseBasicParsing -Headers @{
-                'Cache-Control' = 'no-cache, no-store, must-revalidate'
-                'Pragma'        = 'no-cache'
-            }).Content
-        } catch {
-            $last = $_
-            if ($attempt -lt ($Retries - 1)) {
-                Start-Sleep -Milliseconds (400 * ($attempt + 1))
+    foreach ($targetUri in $Uris) {
+        if ([string]::IsNullOrWhiteSpace($targetUri)) { continue }
+        for ($attempt = 0; $attempt -lt $Retries; $attempt++) {
+            try {
+                return (Invoke-WebRequest -Uri $targetUri -UseBasicParsing -Headers @{
+                    'Cache-Control' = 'no-cache, no-store, must-revalidate'
+                    'Pragma'        = 'no-cache'
+                }).Content
+            } catch {
+                $last = $_
+                if ($attempt -lt ($Retries - 1)) {
+                    Start-Sleep -Milliseconds (400 * ($attempt + 1))
+                }
             }
         }
     }
@@ -70,23 +109,10 @@ function Wait-MystInstallPause {
 }
 
 function Get-MystBundleUrl {
-    $base = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install-bundle.ps1'
-    $cacheHeaders = @{
-        'Cache-Control' = 'no-cache, no-store, must-revalidate'
-        'Pragma'        = 'no-cache'
-    }
-
-    try {
-        $manifest = Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/JustValkz/Myst/main/update.json' -Headers $cacheHeaders
-        if ($manifest -and $manifest.version) {
-            return "$base`?v=$($manifest.version)"
-        }
-    } catch {}
-
-    return "$base`?t=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
+    return (Get-MystBundleUrls | Select-Object -First 1)
 }
 
-$bundleUrl = Get-MystBundleUrl
+$bundleUrls = Get-MystBundleUrls
 $exitCode = 0
 
 try {
@@ -95,7 +121,7 @@ try {
     Write-Host '  Downloading latest installer bundle...' -ForegroundColor DarkGray
     Write-Host ''
 
-    $body = Invoke-MystWebRequestText -Uri $bundleUrl -Retries 4
+    $body = Invoke-MystWebRequestText -Uris $bundleUrls -Retries 3
 
     while ($body.Length -gt 0 -and ([int][char]$body[0] -eq 0xFEFF)) {
         $body = $body.Substring(1)

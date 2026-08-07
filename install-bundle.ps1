@@ -288,25 +288,48 @@ function Wait-MystInstallPause {
     }
 }
 
+function Get-MystUnixTimestamp {
+    return [int64]([DateTime]::UtcNow - [DateTime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)).TotalSeconds
+}
+
+function Get-MystGitHubMirrorUrls {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath
+    )
+
+    $relative = $RelativePath.TrimStart('/')
+    $stamp = Get-MystUnixTimestamp
+    return @(
+        "https://raw.githubusercontent.com/JustValkz/Myst/main/$relative?t=$stamp"
+        "https://cdn.jsdelivr.net/gh/JustValkz/Myst@main/$relative?t=$stamp"
+    )
+}
+
 function Invoke-MystElevatedInstall {
     param(
         [string]$InstallUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1',
         [hashtable]$BoundParams = @{}
     )
 
-    $parts = New-Object System.Collections.Generic.List[string]
-    [void]$parts.Add("irm '$InstallUrl' | iex")
+    $choice = '1'
+    if ($BoundParams.ContainsKey('Choice') -and -not [string]::IsNullOrWhiteSpace([string]$BoundParams['Choice'])) {
+        $choice = [string]$BoundParams['Choice']
+    }
+
+    $extraSwitches = New-Object System.Collections.Generic.List[string]
     foreach ($key in ($BoundParams.Keys | Sort-Object)) {
+        if ($key -eq 'Choice') { continue }
         $val = $BoundParams[$key]
         if ($val -is [switch]) {
-            if ($val) { [void]$parts.Add("-$key") }
+            if ($val) { [void]$extraSwitches.Add("-$key") }
         } elseif ($null -ne $val -and "$val".Length -gt 0) {
-            [void]$parts.Add("-$key")
-            [void]$parts.Add("'$val'")
+            [void]$extraSwitches.Add("-$key")
+            [void]$extraSwitches.Add("'$val'")
         }
     }
 
-    $cmd = $parts -join ' '
+    $switchText = if ($extraSwitches.Count -gt 0) { ' ' + ($extraSwitches -join ' ') } else { '' }
+    $cmd = "`$script = (Invoke-RestMethod -Uri '$InstallUrl'); `$block = [scriptblock]::Create(`$script); & `$block -Choice '$choice'$switchText"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
     try {
         $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList @(
@@ -763,27 +786,56 @@ function Download-RemoteFile {
     }
 
     $temp = Join-Path $env:TEMP ("myst_dl_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
+    $urls = @($Url)
+    $leaf = [System.IO.Path]::GetFileName($Url.Split('?')[0])
+    if ($leaf -and (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue)) {
+        $urls = @(Get-MystGitHubMirrorUrls -RelativePath $leaf)
+    }
+
+    if (Get-Command Enable-MystInstallerWeb -ErrorAction SilentlyContinue) {
+        Enable-MystInstallerWeb
+    }
+
+    $downloaded = $false
+    $lastError = $null
+    foreach ($tryUrl in $urls) {
+        if ([string]::IsNullOrWhiteSpace($tryUrl)) { continue }
+        try {
+            if (Test-Path -LiteralPath $temp) {
+                Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+            }
+
+            Write-Step "Downloading disguised DLL..." -Color Gray
+            Write-Step "  $tryUrl" -Color DarkGray
+            Invoke-WebRequest -Uri $tryUrl -OutFile $temp -UseBasicParsing -Headers @{
+                'Cache-Control' = 'no-cache, no-store, must-revalidate'
+                'Pragma'        = 'no-cache'
+            }
+
+            if (-not (Test-Path -LiteralPath $temp)) {
+                throw 'Download produced no file.'
+            }
+
+            $size = (Get-Item -LiteralPath $temp).Length
+            if ($size -lt 100000) {
+                throw "Downloaded file too small ($size bytes)."
+            }
+
+            $downloaded = $true
+            break
+        } catch {
+            $lastError = $_
+        }
+    }
+
+    if (-not $downloaded) {
+        Write-Step "Download failed: $($lastError.Exception.Message)" -Color Red
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+
     try {
-        if (Test-Path -LiteralPath $temp) {
-            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
-        }
-
-        Write-Step "Downloading disguised DLL..." -Color Gray
-        Write-Step "  $Url" -Color DarkGray
-        Invoke-WebRequest -Uri $Url -OutFile $temp -UseBasicParsing
-
-        if (-not (Test-Path -LiteralPath $temp)) {
-            Write-Step 'Download produced no file.' -Color Red
-            return $false
-        }
-
         $size = (Get-Item -LiteralPath $temp).Length
-        if ($size -lt 100000) {
-            Write-Step "Downloaded file too small ($size bytes) - rejecting." -Color Red
-            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
-            return $false
-        }
-
         Replace-StagedFile -TempPath $temp -Destination $Destination -UnlockDllPath $Destination
 
         $installedSize = (Get-Item -LiteralPath $Destination).Length
@@ -2031,7 +2083,14 @@ if (-not $script:IsAdmin) {
     Write-Host ''
     Write-Host '  Administrator access required — requesting elevation...' -ForegroundColor Yellow
     if (Get-Command Invoke-MystElevatedInstall -ErrorAction SilentlyContinue) {
-        $elevatedExit = Invoke-MystElevatedInstall -BoundParams $PSBoundParameters
+        $elevParams = @{}
+        foreach ($key in $PSBoundParameters.Keys) {
+            $elevParams[$key] = $PSBoundParameters[$key]
+        }
+        if (-not $elevParams.ContainsKey('Choice')) {
+            $elevParams['Choice'] = '1'
+        }
+        $elevatedExit = Invoke-MystElevatedInstall -BoundParams $elevParams
         if ($elevatedExit -eq 0) { exit 0 }
     }
     Write-Host '  Elevation was cancelled or failed.' -ForegroundColor Yellow
@@ -2087,9 +2146,8 @@ if ($env:MYST_INSTALL_FROM_BUNDLE -ne '1') {
 $script:MystInstallMutex = $null
 try {
     $script:MystInstallMutex = New-Object System.Threading.Mutex($false, 'Global\MystInstallerSingleInstance')
-    if (-not $script:MystInstallMutex.WaitOne(0)) {
-        Write-Step 'Myst install is already running - skipping duplicate inject.' -Color Yellow
-        exit 0
+    if (-not $script:MystInstallMutex.WaitOne(15000)) {
+        Write-Step 'Another Myst install may still be running — continuing anyway.' -Color Yellow
     }
 } catch {
     $script:MystInstallMutex = $null
@@ -2140,6 +2198,13 @@ if ($script:IsAdmin) {
 Write-Step 'Environment ready.' -Color Green
 Remove-LegacyMystDirectory
 
+if ([string]::IsNullOrWhiteSpace($Choice) -and -not [string]::IsNullOrWhiteSpace($env:MYST_INSTALL_CHOICE)) {
+    $Choice = [string]$env:MYST_INSTALL_CHOICE
+}
+if ([string]::IsNullOrWhiteSpace($Choice) -and $env:MYST_INSTALL_FROM_BUNDLE -eq '1' -and -not $WatchMode -and -not $LoadOnly) {
+    $Choice = '1'
+}
+
 if (Import-MystLocHookInstaller) {
     if (Get-Command Repair-MystLocPowerShellProfiles -ErrorAction SilentlyContinue) {
         Repair-MystLocPowerShellProfiles | Out-Null
@@ -2165,6 +2230,9 @@ Write-Host ''
 if ($Choice) {
     if ($Choice -notin @('1', '2', '3', '4')) {
         Write-Host "  Invalid choice '$Choice'. Use 1, 2, 3, or 4." -ForegroundColor Yellow
+        if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+            Wait-MystInstallPause -Failed -ExitCode 1
+        }
         exit 1
     }
     $choice = $Choice
@@ -2201,7 +2269,13 @@ switch ($choice) {
         Write-Host "`n  Goodbye!" -ForegroundColor Cyan
     }
 
-    default { Write-Host "`n  Invalid option." -ForegroundColor Yellow }
+    default {
+        Write-Host "`n  Invalid option." -ForegroundColor Yellow
+        if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+            Wait-MystInstallPause -Failed -ExitCode 1
+        }
+        exit 1
+    }
 }
 } catch {
     Write-Host "`n  Issue: $($_.Exception.Message)" -ForegroundColor Yellow

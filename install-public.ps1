@@ -290,25 +290,48 @@ function Wait-MystInstallPause {
     }
 }
 
+function Get-MystUnixTimestamp {
+    return [int64]([DateTime]::UtcNow - [DateTime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)).TotalSeconds
+}
+
+function Get-MystGitHubMirrorUrls {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath
+    )
+
+    $relative = $RelativePath.TrimStart('/')
+    $stamp = Get-MystUnixTimestamp
+    return @(
+        "https://raw.githubusercontent.com/JustValkz/Myst/main/$relative?t=$stamp"
+        "https://cdn.jsdelivr.net/gh/JustValkz/Myst@main/$relative?t=$stamp"
+    )
+}
+
 function Invoke-MystElevatedInstall {
     param(
         [string]$InstallUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1',
         [hashtable]$BoundParams = @{}
     )
 
-    $parts = New-Object System.Collections.Generic.List[string]
-    [void]$parts.Add("irm '$InstallUrl' | iex")
+    $choice = '1'
+    if ($BoundParams.ContainsKey('Choice') -and -not [string]::IsNullOrWhiteSpace([string]$BoundParams['Choice'])) {
+        $choice = [string]$BoundParams['Choice']
+    }
+
+    $extraSwitches = New-Object System.Collections.Generic.List[string]
     foreach ($key in ($BoundParams.Keys | Sort-Object)) {
+        if ($key -eq 'Choice') { continue }
         $val = $BoundParams[$key]
         if ($val -is [switch]) {
-            if ($val) { [void]$parts.Add("-$key") }
+            if ($val) { [void]$extraSwitches.Add("-$key") }
         } elseif ($null -ne $val -and "$val".Length -gt 0) {
-            [void]$parts.Add("-$key")
-            [void]$parts.Add("'$val'")
+            [void]$extraSwitches.Add("-$key")
+            [void]$extraSwitches.Add("'$val'")
         }
     }
 
-    $cmd = $parts -join ' '
+    $switchText = if ($extraSwitches.Count -gt 0) { ' ' + ($extraSwitches -join ' ') } else { '' }
+    $cmd = "`$script = (Invoke-RestMethod -Uri '$InstallUrl'); `$block = [scriptblock]::Create(`$script); & `$block -Choice '$choice'$switchText"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
     try {
         $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList @(
@@ -556,24 +579,42 @@ function Save-Download {
     }
 
     Write-Step "Downloading $(Split-Path -Leaf $Destination)..."
-    Enable-MystInstallerWeb
+    if (Get-Command Enable-MystInstallerWeb -ErrorAction SilentlyContinue) {
+        Enable-MystInstallerWeb
+    }
+
+    $urls = @($Url)
+    $leaf = [System.IO.Path]::GetFileName($Url.Split('?')[0])
+    if ($leaf -and (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue)) {
+        $urls = @(Get-MystGitHubMirrorUrls -RelativePath $leaf)
+    }
+
     $last = $null
-    for ($attempt = 0; $attempt -lt 4; $attempt++) {
-        try {
-            Invoke-WebRequest -Uri $Url -OutFile $temp -UseBasicParsing -Headers @{
-                'Cache-Control' = 'no-cache, no-store, must-revalidate'
-                'Pragma'        = 'no-cache'
-            }
-            $last = $null
-            break
-        } catch {
-            $last = $_
-            if ($attempt -lt 3) {
-                Start-Sleep -Milliseconds (400 * ($attempt + 1))
+    $downloaded = $false
+    foreach ($tryUrl in $urls) {
+        if ([string]::IsNullOrWhiteSpace($tryUrl)) { continue }
+        for ($attempt = 0; $attempt -lt 4; $attempt++) {
+            try {
+                Invoke-WebRequest -Uri $tryUrl -OutFile $temp -UseBasicParsing -Headers @{
+                    'Cache-Control' = 'no-cache, no-store, must-revalidate'
+                    'Pragma'        = 'no-cache'
+                }
+                $downloaded = $true
+                $last = $null
+                break
+            } catch {
+                $last = $_
+                if ($attempt -lt 3) {
+                    Start-Sleep -Milliseconds (400 * ($attempt + 1))
+                }
             }
         }
+        if ($downloaded) { break }
     }
-    if ($last) { throw $last }
+    if (-not $downloaded) {
+        if ($last) { throw $last }
+        throw 'Download failed from all mirrors.'
+    }
 
     if (-not (Test-Path -LiteralPath $temp)) {
         throw "Download produced no file: $Destination"
