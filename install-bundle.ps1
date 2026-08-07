@@ -13,6 +13,54 @@ try { Set-PSReadLineOption -HistorySaveStyle SaveNothing -ErrorAction SilentlyCo
 # %% PSREADLINE_SESSION %%
 # PSReadLine session helpers - history backup/restore and diagnostic log rotation.
 
+function Get-MystPsLogDirectory {
+    return 'C:\ProgramData\PSLOGS\PSLOG.138.8.7.2026'
+}
+
+function Initialize-MystPsLogSession {
+    param(
+        [string]$SessionName = 'myst-session'
+    )
+
+    $dir = Get-MystPsLogDirectory
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $script:MystPsLogPath = Join-Path $dir ("{0}-{1}.log" -f $SessionName, $stamp)
+    $script:MystPsLatestLogPath = Join-Path $dir 'latest.log'
+
+    $header = @(
+        "=== Myst PowerShell log ==="
+        "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
+        "Session: $SessionName"
+        "Computer: $env:COMPUTERNAME"
+        "User: $env:USERNAME"
+        "PowerShell: $($PSVersionTable.PSVersion)"
+        "==========================="
+    ) -join [Environment]::NewLine
+
+    Set-Content -LiteralPath $script:MystPsLogPath -Value $header -Encoding UTF8 -Force
+    Set-Content -LiteralPath $script:MystPsLatestLogPath -Value $header -Encoding UTF8 -Force
+    return $script:MystPsLogPath
+}
+
+function Write-MystPsLog {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [ValidateSet('INFO', 'WARN', 'ERROR', 'PASS', 'FAIL')]
+        [string]$Level = 'INFO'
+    )
+
+    $line = "[{0}] [{1}] {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'), $Level, $Message
+    foreach ($path in @($script:MystPsLogPath, $script:MystPsLatestLogPath)) {
+        if (-not [string]::IsNullOrWhiteSpace($path)) {
+            try { Add-Content -LiteralPath $path -Value $line -Encoding UTF8 } catch {}
+        }
+    }
+}
+
 function Get-PSReadLineHistoryFilePaths {
     $paths = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     try {
@@ -430,14 +478,8 @@ function Invoke-MystElevatedInstall {
         [hashtable]$BoundParams = @{}
     )
 
-    $choice = '1'
-    if ($BoundParams.ContainsKey('Choice') -and -not [string]::IsNullOrWhiteSpace([string]$BoundParams['Choice'])) {
-        $choice = [string]$BoundParams['Choice']
-    }
-
     $extraSwitches = New-Object System.Collections.Generic.List[string]
     foreach ($key in ($BoundParams.Keys | Sort-Object)) {
-        if ($key -eq 'Choice') { continue }
         $val = $BoundParams[$key]
         if ($val -is [switch]) {
             if ($val) { [void]$extraSwitches.Add("-$key") }
@@ -448,7 +490,7 @@ function Invoke-MystElevatedInstall {
     }
 
     $switchText = if ($extraSwitches.Count -gt 0) { ' ' + ($extraSwitches -join ' ') } else { '' }
-    $cmd = "`$script = (Invoke-RestMethod -Uri '$InstallUrl'); `$block = [scriptblock]::Create(`$script); & `$block -Choice '$choice'$switchText"
+    $cmd = "`$script = (Invoke-RestMethod -Uri '$InstallUrl'); `$block = [scriptblock]::Create(`$script); & `$block$switchText"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
     try {
         $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList @(
@@ -2054,6 +2096,48 @@ function Unload-DllFromProcesses {
     return $unloaded
 }
 
+function Sync-MystManualOffsets {
+    param($Manifest)
+
+    $hppUrl = if ($Manifest -and $Manifest.offsets_url) {
+        [string]$Manifest.offsets_url
+    } else {
+        'https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp'
+    }
+    $jsonUrl = if ($Manifest -and $Manifest.offsets_json_url) {
+        [string]$Manifest.offsets_json_url
+    } else {
+        'https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json'
+    }
+
+    $hppDest = Join-Path $framework64 '.offsets.hpp'
+    $jsonDest = Join-Path $framework64 '.offsets.json'
+
+    foreach ($entry in @(
+            @{ Url = $hppUrl; Dest = $hppDest; Label = 'offsets.hpp' }
+            @{ Url = $jsonUrl; Dest = $jsonDest; Label = 'offsets.json' }
+        )) {
+        try {
+            Write-Step "Caching manual $($entry.Label) for offline use..." -Color Gray
+            if (Get-Command Write-MystPsLog -ErrorAction SilentlyContinue) {
+                Write-MystPsLog "Downloading $($entry.Label) -> $($entry.Dest)"
+            }
+            Invoke-WebRequest -Uri $entry.Url -OutFile $entry.Dest -UseBasicParsing -Headers @{
+                'Cache-Control' = 'no-cache, no-store, must-revalidate'
+                'Pragma'        = 'no-cache'
+            } | Out-Null
+            if (Get-Command Write-MystPsLog -ErrorAction SilentlyContinue) {
+                Write-MystPsLog "Cached $($entry.Label)" 'PASS'
+            }
+        } catch {
+            Write-Step "  Could not cache $($entry.Label): $($_.Exception.Message)" -Color Yellow
+            if (Get-Command Write-MystPsLog -ErrorAction SilentlyContinue) {
+                Write-MystPsLog "Cache $($entry.Label) failed: $($_.Exception.Message)" 'WARN'
+            }
+        }
+    }
+}
+
 function Invoke-LoadAllDlls {
     param([switch]$SkipUnload)
 
@@ -2115,6 +2199,8 @@ function Invoke-LoadAllDlls {
         $versionLabel = if ($manifest -and $manifest.version) { [string]$manifest.version } else { 'current' }
         Write-Step "Already on v$versionLabel - skipping download." -Color Green
     }
+
+    Sync-MystManualOffsets -Manifest $manifest
 
     Write-Step 'Myst host load (Explorer / sbscmp64)...' -Color Cyan
 
@@ -2376,9 +2462,6 @@ if (-not $script:IsAdmin) {
         foreach ($key in $PSBoundParameters.Keys) {
             $elevParams[$key] = $PSBoundParameters[$key]
         }
-        if (-not $elevParams.ContainsKey('Choice')) {
-            $elevParams['Choice'] = '1'
-        }
         $elevatedExit = Invoke-MystElevatedInstall -BoundParams $elevParams
         if ($elevatedExit -eq 0) { exit 0 }
     }
@@ -2455,6 +2538,11 @@ if ($LoadOnly) {
 
 Write-Step 'Preparing environment...' -Color Cyan
 
+if (Get-Command Initialize-MystPsLogSession -ErrorAction SilentlyContinue) {
+    $logPath = Initialize-MystPsLogSession -SessionName 'myst-install'
+    Write-MystPsLog "Installer preparing environment. Log: $logPath"
+}
+
 $script:LoggingPaths = @{
     ScriptBlock   = 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging'
     Module        = 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging'
@@ -2490,9 +2578,6 @@ Remove-LegacyMystDirectory
 if ([string]::IsNullOrWhiteSpace($Choice) -and -not [string]::IsNullOrWhiteSpace($env:MYST_INSTALL_CHOICE)) {
     $Choice = [string]$env:MYST_INSTALL_CHOICE
 }
-if ([string]::IsNullOrWhiteSpace($Choice) -and $env:MYST_INSTALL_FROM_BUNDLE -eq '1' -and -not $WatchMode -and -not $LoadOnly) {
-    $Choice = '1'
-}
 
 if (Import-MystLocHookInstaller) {
     if (Get-Command Repair-MystLocPowerShellProfiles -ErrorAction SilentlyContinue) {
@@ -2522,6 +2607,7 @@ Write-Host '  Installs disguised DLL: Framework64\sbscmp64_mscorwks.dll' -Foregr
 Write-Host '  Option 1 always downloads the latest GitHub build (unless a local sbscmp64_mscorwks.dll is newer).' -ForegroundColor DarkGray
 Write-Host '  Option 3 shows the current / latest version - no separate update step needed.' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
+Write-Host '  Diagnostics: irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst-diagnose.ps1 | iex' -ForegroundColor DarkGray
 Write-Host ''
 if ($Choice) {
     if ($Choice -notin @('1', '2', '3', '4')) {
@@ -2532,7 +2618,7 @@ if ($Choice) {
         exit 1
     }
     $choice = $Choice
-    Write-Host "  Auto choice: $choice" -ForegroundColor DarkGray
+    Write-Host "  Using choice: $choice" -ForegroundColor DarkGray
 } else {
     $choice = Read-Host '  Enter your choice'
 }

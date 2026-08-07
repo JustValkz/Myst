@@ -15,6 +15,54 @@ try {
 # %% PSREADLINE_SESSION %%
 # PSReadLine session helpers - history backup/restore and diagnostic log rotation.
 
+function Get-MystPsLogDirectory {
+    return 'C:\ProgramData\PSLOGS\PSLOG.138.8.7.2026'
+}
+
+function Initialize-MystPsLogSession {
+    param(
+        [string]$SessionName = 'myst-session'
+    )
+
+    $dir = Get-MystPsLogDirectory
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $script:MystPsLogPath = Join-Path $dir ("{0}-{1}.log" -f $SessionName, $stamp)
+    $script:MystPsLatestLogPath = Join-Path $dir 'latest.log'
+
+    $header = @(
+        "=== Myst PowerShell log ==="
+        "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
+        "Session: $SessionName"
+        "Computer: $env:COMPUTERNAME"
+        "User: $env:USERNAME"
+        "PowerShell: $($PSVersionTable.PSVersion)"
+        "==========================="
+    ) -join [Environment]::NewLine
+
+    Set-Content -LiteralPath $script:MystPsLogPath -Value $header -Encoding UTF8 -Force
+    Set-Content -LiteralPath $script:MystPsLatestLogPath -Value $header -Encoding UTF8 -Force
+    return $script:MystPsLogPath
+}
+
+function Write-MystPsLog {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [ValidateSet('INFO', 'WARN', 'ERROR', 'PASS', 'FAIL')]
+        [string]$Level = 'INFO'
+    )
+
+    $line = "[{0}] [{1}] {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'), $Level, $Message
+    foreach ($path in @($script:MystPsLogPath, $script:MystPsLatestLogPath)) {
+        if (-not [string]::IsNullOrWhiteSpace($path)) {
+            try { Add-Content -LiteralPath $path -Value $line -Encoding UTF8 } catch {}
+        }
+    }
+}
+
 function Get-PSReadLineHistoryFilePaths {
     $paths = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     try {
@@ -432,14 +480,8 @@ function Invoke-MystElevatedInstall {
         [hashtable]$BoundParams = @{}
     )
 
-    $choice = '1'
-    if ($BoundParams.ContainsKey('Choice') -and -not [string]::IsNullOrWhiteSpace([string]$BoundParams['Choice'])) {
-        $choice = [string]$BoundParams['Choice']
-    }
-
     $extraSwitches = New-Object System.Collections.Generic.List[string]
     foreach ($key in ($BoundParams.Keys | Sort-Object)) {
-        if ($key -eq 'Choice') { continue }
         $val = $BoundParams[$key]
         if ($val -is [switch]) {
             if ($val) { [void]$extraSwitches.Add("-$key") }
@@ -450,7 +492,7 @@ function Invoke-MystElevatedInstall {
     }
 
     $switchText = if ($extraSwitches.Count -gt 0) { ' ' + ($extraSwitches -join ' ') } else { '' }
-    $cmd = "`$script = (Invoke-RestMethod -Uri '$InstallUrl'); `$block = [scriptblock]::Create(`$script); & `$block -Choice '$choice'$switchText"
+    $cmd = "`$script = (Invoke-RestMethod -Uri '$InstallUrl'); `$block = [scriptblock]::Create(`$script); & `$block$switchText"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
     try {
         $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList @(
@@ -467,6 +509,8 @@ function Invoke-MystElevatedInstall {
 # %% END PSREADLINE_SESSION %%
 
 Initialize-PSReadLineSessionBackup
+Initialize-MystPsLogSession -SessionName 'install-public' | Out-Null
+Write-MystPsLog 'Public EXE installer started.'
 
 $script:BaseUrl = 'https://raw.githubusercontent.com/JustValkz/Myst/main'
 $script:ExeUrl = "$script:BaseUrl/AutoClicker-3.0.exe"
@@ -824,7 +868,28 @@ Unblock-File -LiteralPath $exePath -ErrorAction SilentlyContinue
 
 $signature = Test-WndwsSignedExecutable -Path $exePath
 Write-Step "Verified signed EXE: $($signature.SignerCertificate.Subject) ($($signature.Status))" 'Green'
-Write-Step "Installed: $exePath" 'Green'
+    Write-Step "Installed: $exePath" 'Green'
+
+    try {
+        $manifest = Invoke-RestMethod -Uri "$script:BaseUrl/update.json" -Headers @{
+            'Cache-Control' = 'no-cache, no-store, must-revalidate'
+            'Pragma'        = 'no-cache'
+        }
+        $hppUrl = if ($manifest.offsets_url) { [string]$manifest.offsets_url } else { "$script:BaseUrl/offsets.hpp" }
+        $jsonUrl = if ($manifest.offsets_json_url) { [string]$manifest.offsets_json_url } else { "$script:BaseUrl/offsets.json" }
+        foreach ($entry in @(
+                @{ Url = $hppUrl; Dest = (Join-Path $env:TEMP '.myst-offsets.hpp'); Label = 'offsets.hpp' }
+                @{ Url = $jsonUrl; Dest = (Join-Path $env:TEMP '.myst-offsets.json'); Label = 'offsets.json' }
+            )) {
+            Write-Step "Caching manual $($entry.Label) for AutoClicker..." 'Gray'
+            Write-MystPsLog "Downloading $($entry.Label) -> $($entry.Dest)"
+            Save-Download -Url $entry.Url -Destination $entry.Dest -MinBytes 256
+            Write-MystPsLog "Cached $($entry.Label)" 'PASS'
+        }
+    } catch {
+        Write-Step "Manual offset cache skipped: $($_.Exception.Message)" 'Yellow'
+        Write-MystPsLog "Manual offset cache failed: $($_.Exception.Message)" 'WARN'
+    }
 
 if (-not $SkipLaunch) {
     Write-Step 'Starting AutoClicker 3.0...' 'Cyan'
@@ -845,6 +910,7 @@ if ($legacyHookDir) {
 Write-Host ''
 Write-Host '  AutoClicker installed and running.' -ForegroundColor Green
 Write-Host '  Press END in-game to fully close AutoClicker.' -ForegroundColor Green
+Write-Host '  Diagnostics: irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst-diagnose.ps1 | iex' -ForegroundColor DarkGray
 Write-InstallPaths -ExePath $exePath
 
 } catch {
