@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.462",
+    "version":  "3.463",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Cross-user install fix: auto-install on irm|iex, CDN mirrors, elevation Choice fix, mutex wait, PS 5.1 cache bust",
+    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
@@ -12,8 +12,8 @@
     "fflags_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/fflags.json",
     "fflags_source":  "valkz-fflag-dumper",
     "fflags_count":  14147,
-    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
-    "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
+    "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
-    "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex"
+    "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
+    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
 }
