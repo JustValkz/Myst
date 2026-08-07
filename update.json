@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.461",
+    "version":  "3.462",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Fix install.ps1 empty Path crash (irm|iex); embedded offsets init before remote fetch",
+    "notes":  "Cross-user install fix: auto-install on irm|iex, CDN mirrors, elevation Choice fix, mutex wait, PS 5.1 cache bust",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
