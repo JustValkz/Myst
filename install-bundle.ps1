@@ -469,14 +469,7 @@ function Repair-MystNvidiaCapture {
         }
     }
 
-    $containers = @(Get-Process -Name 'nvcontainer' -ErrorAction SilentlyContinue)
-    if ($containers.Count -gt 0) {
-        Write-Step '  Restarting NVIDIA container processes so ShadowPlay can stop cleanly...' -Color DarkGray
-        foreach ($proc in $containers) {
-            try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch {}
-        }
-        Start-Sleep -Milliseconds 800
-    }
+    Write-Step '  NVIDIA hook files cleared — Myst will redeploy on next load.' -Color DarkGray
 }
 
 function Repair-MystWindowsDisplay {
@@ -497,7 +490,7 @@ function Repair-MystWindowsDisplay {
         }
     }
 
-    foreach ($name in @('SystemSettings', 'ApplicationFrameHost')) {
+    foreach ($name in @('SystemSettings')) {
         $procs = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
         foreach ($proc in $procs) {
             try {
