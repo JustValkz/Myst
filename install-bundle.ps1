@@ -1761,9 +1761,9 @@ function Start-MystInProcessHost {
     $escapedPath = $normalized.Replace("'", "''")
     $hostScriptPath = Join-Path $env:TEMP ("myst-host-{0}.ps1" -f ([Guid]::NewGuid().ToString('N')))
 
-    $hostScript = @"
-`$ErrorActionPreference = 'Stop'
-Add-Type @'
+    $hostScriptTemplate = @'
+$ErrorActionPreference = 'Stop'
+Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class MystHostLoader {
@@ -1782,13 +1782,14 @@ public class MystHostLoader {
         return true;
     }
 }
-'@
-if (-not [MystHostLoader]::Run('$escapedPath')) {
+"@
+if (-not [MystHostLoader]::Run('{0}')) {
     [Console]::Error.WriteLine([MystHostLoader]::LastError)
     exit 1
 }
-while (`$true) { Start-Sleep -Seconds 3600 }
-"@
+while ($true) { Start-Sleep -Seconds 3600 }
+'@
+    $hostScript = $hostScriptTemplate -f $escapedPath
 
     Set-Content -LiteralPath $hostScriptPath -Value $hostScript -Encoding UTF8 -Force
 
@@ -1824,7 +1825,7 @@ function Invoke-MystLoadViaInProcessHost {
 
     for ($i = 0; $i -lt 40; $i++) {
         if ($hostProc.HasExited) {
-            Write-Step "Myst host exited early (code $($hostProc.ExitCode)) — LoadLibrary or MystStart failed in host." -Color Red
+            Write-Step "Myst host exited early (code $($hostProc.ExitCode)) - LoadLibrary or MystStart failed in host." -Color Red
             $script:MystInProcessHostPid = $null
             return $false
         }
@@ -2266,7 +2267,7 @@ function Invoke-Sbscmp30LoadFromDisk {
         Start-Sleep -Milliseconds 400
     }
 
-    Write-Step 'In-process host failed — trying remote injection fallback...' -Color Yellow
+    Write-Step 'In-process host failed - trying remote injection fallback...' -Color Yellow
     $maxInjectRetries = 8
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
