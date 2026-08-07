@@ -95,6 +95,11 @@ function Write-Step {
     }
 }
 
+function Write-MystDiag {
+    param([string]$Message)
+    Write-Step "[diag] $Message" -Color DarkGray
+}
+
 function Write-MystInstallSummary {
     param(
         [bool]$LoadSucceeded,
@@ -125,9 +130,20 @@ function Write-MystInstallSummary {
     if ($hosts.Count -gt 0) {
         foreach ($hostProc in $hosts) {
             Write-MystPsLog ("Myst mapped in {0} PID {1}" -f $hostProc.ProcessName, $hostProc.Id) 'INFO'
+            $base = Get-MystRemoteModuleBase -ProcessId $hostProc.Id -DllPath $dllPath
+            Write-MystPsLog ("  module base: {0}" -f $base) 'INFO'
         }
     } else {
         Write-MystPsLog 'Myst DLL is not loaded in any host process.' 'WARN'
+    }
+
+    Write-MystPsLog ("Installer PID: {0} Admin: {1}" -f $PID, $script:IsAdmin) 'INFO'
+    if ($script:MystInProcessHostPid) {
+        Write-MystPsLog ("Last in-process host PID: {0}" -f $script:MystInProcessHostPid) 'INFO'
+    }
+    $lastInjectorError = if ($script:MystInjectorTypeReady) { [MystInjector]::LastError } else { '' }
+    if ($lastInjectorError) {
+        Write-MystPsLog ("Last injector error: {0}" -f $lastInjectorError) 'WARN'
     }
 
     $overlayUp = $false
@@ -1106,31 +1122,91 @@ function Get-ProcessesWithMystDll {
     param([string]$DllPath)
 
     Initialize-MystInjectorType
+    $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+    Write-MystDiag "Scanning hosts for DLL: $injectPath (installer PID=$PID)"
     $found = @{}
     foreach ($name in @('RuntimeBroker', 'explorer', 'powershell', 'cmd', 'dllhost')) {
         foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+            if ($proc.Id -eq $PID) {
+                Write-MystDiag "  skip installer $name PID $($proc.Id)"
+                continue
+            }
             if (Test-ProcessHasDllFast -ProcessId $proc.Id -DllPath $DllPath) {
+                Write-MystDiag "  mapped: $name PID $($proc.Id)"
                 $found[$proc.Id] = $proc
             }
         }
     }
 
-    if ($script:MystFallbackHostPid) {
+    if ($script:MystFallbackHostPid -and $script:MystFallbackHostPid -ne $PID) {
         $fallback = Get-Process -Id $script:MystFallbackHostPid -ErrorAction SilentlyContinue
         if ($fallback -and (Test-ProcessHasDllFast -ProcessId $fallback.Id -DllPath $DllPath)) {
+            Write-MystDiag "  mapped: fallback PID $($fallback.Id)"
             $found[$fallback.Id] = $fallback
         }
     }
 
-    foreach ($name in @('cmd', 'dllhost')) {
-        foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
-            if (Test-ProcessHasDllFast -ProcessId $proc.Id -DllPath $DllPath) {
-                $found[$proc.Id] = $proc
-            }
+    if ($script:MystInProcessHostPid -and $script:MystInProcessHostPid -ne $PID) {
+        $inProc = Get-Process -Id $script:MystInProcessHostPid -ErrorAction SilentlyContinue
+        if ($inProc -and (Test-ProcessHasDllFast -ProcessId $inProc.Id -DllPath $DllPath)) {
+            Write-MystDiag "  mapped: in-process host PID $($inProc.Id)"
+            $found[$inProc.Id] = $inProc
         }
     }
 
     return @($found.Values | Sort-Object Id)
+}
+
+function Stop-MystDisposableHost {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [string]$DllPath
+    )
+
+    if (-not $Process -or $Process.HasExited) {
+        Write-MystDiag 'Stop-MystDisposableHost: process already exited.'
+        return $true
+    }
+
+    if ($Process.Id -eq $PID) {
+        Write-MystDiag "Stop-MystDisposableHost: skip installer PID $PID"
+        return $true
+    }
+
+    Write-MystDiag "Stop-MystDisposableHost: $($Process.ProcessName) PID $($Process.Id)"
+
+    try {
+        Invoke-MystRequestUnloadExport -Target $Process -DllPath $DllPath | Out-Null
+        Invoke-MystRequestStopExport -Target $Process -DllPath $DllPath | Out-Null
+        Start-Sleep -Milliseconds 250
+    } catch {
+        Write-MystDiag "  export stop failed: $($_.Exception.Message)"
+    }
+
+    if (-not (Test-ProcessHasDllFast -ProcessId $Process.Id -DllPath $DllPath)) {
+        Write-MystDiag '  DLL unmapped after exports.'
+        return $true
+    }
+
+    Write-MystDiag '  Force-stopping disposable host (skip FreeLibrary - avoids hang).'
+    try {
+        Stop-Process -Id $Process.Id -Force -ErrorAction Stop
+    } catch {
+        if ($Process.HasExited) { return $true }
+        Write-MystDiag "  Stop-Process failed: $($_.Exception.Message)"
+        return $false
+    }
+
+    for ($i = 0; $i -lt 20; $i++) {
+        if (-not (Get-Process -Id $Process.Id -ErrorAction SilentlyContinue)) {
+            Write-MystDiag "  Host PID $($Process.Id) terminated."
+            return $true
+        }
+        Start-Sleep -Milliseconds 100
+    }
+
+    Write-MystDiag "  Host PID $($Process.Id) still running after force stop."
+    return $false
 }
 
 function Clear-AllMystDllHosts {
@@ -1145,6 +1221,22 @@ function Clear-AllMystDllHosts {
     Write-Step "Found $($withDll.Count) host process(es) with DLL loaded." -Color Gray
     $ok = $true
     foreach ($proc in $withDll) {
+        if ($proc.Id -eq $PID) {
+            Write-MystDiag "Skipping installer PID $PID during host clear."
+            continue
+        }
+
+        if ($proc.ProcessName -in @('powershell', 'cmd', 'dllhost')) {
+            Write-Step "Stopping Myst host $($proc.ProcessName) PID $($proc.Id)..." -Color Gray
+            if (Stop-MystDisposableHost -Process $proc -DllPath $DllPath) {
+                Write-Step "  Stopped PID $($proc.Id)" -Color Green
+            } else {
+                Write-Step "  Could not stop PID $($proc.Id)" -Color Red
+                $ok = $false
+            }
+            continue
+        }
+
         if ($proc.ProcessName -eq 'RuntimeBroker') {
             if (-not (Remove-RuntimeBrokerDll -Process $proc -DllPath $DllPath)) {
                 $ok = $false
@@ -1153,18 +1245,13 @@ function Clear-AllMystDllHosts {
         }
 
         Write-Step "Clearing DLL from $($proc.ProcessName) PID $($proc.Id)..." -Color Gray
+        $remoteBase = Get-MystRemoteModuleBase -ProcessId $proc.Id -DllPath $DllPath
+        Write-MystDiag "  remote module base=$remoteBase"
         if (Clear-MystHostDll -Process $proc -DllPath $DllPath) {
             Write-Step "  Unloaded PID $($proc.Id)" -Color Green
         } else {
-            if ($proc.ProcessName -in @('cmd', 'dllhost', 'powershell')) {
-                Invoke-MystRequestUnloadExport -Target $proc -DllPath $DllPath | Out-Null
-                Invoke-MystRequestStopExport -Target $proc -DllPath $DllPath | Out-Null
-                Start-Sleep -Milliseconds 200
-                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-                Write-Step "  Stopped host PID $($proc.Id)" -Color Green
-            } else {
-                $ok = $false
-            }
+            Write-MystDiag "  FreeLibrary path failed for $($proc.ProcessName) PID $($proc.Id)"
+            $ok = $false
         }
     }
     return $ok
@@ -1299,6 +1386,7 @@ function Invoke-MystLoadViaInProcessHost {
     param([string]$DllPath)
 
     Write-Step 'Loading Myst via in-process host (LoadLibrary + MystStart)...' -Color Cyan
+    Write-MystDiag "In-process host DLL: $(Get-NormalizedDllPath -DllPath $DllPath)"
     $hostProc = Start-MystInProcessHost -DllPath $DllPath
     if (-not $hostProc) {
         Write-Step 'Could not spawn Myst in-process host.' -Color Red
@@ -1371,6 +1459,14 @@ function Assert-SingleMystHost {
         if ($proc.Id -eq $keep.Id) { continue }
 
         Write-Step "Removing duplicate host $($proc.ProcessName) PID $($proc.Id)..." -Color Gray
+        if ($proc.ProcessName -in @('powershell', 'cmd', 'dllhost')) {
+            if (Stop-MystDisposableHost -Process $proc -DllPath $DllPath) {
+                Write-Step "  Stopped PID $($proc.Id)" -Color Green
+            } else {
+                $ok = $false
+            }
+            continue
+        }
         $injectPath = Get-NormalizedDllPath -DllPath $DllPath
         if ([MystInjector]::FreeModuleCompletely($proc.Id, $injectPath)) {
             Write-Step "  Unloaded PID $($proc.Id)" -Color Green
@@ -1497,16 +1593,21 @@ function Clear-MystHostDll {
         return $true
     }
 
-    for ($i = 0; $i -lt 10; $i++) {
+    for ($i = 0; $i -lt 3; $i++) {
+        Write-MystDiag "Clear-MystHostDll attempt $($i + 1)/3 PID $($Process.Id)"
         if (-not [MystInjector]::FreeModuleOnce($Process.Id, $remoteBase)) {
+            $detail = [MystInjector]::LastError
+            Write-MystDiag "  FreeModuleOnce failed: $detail"
             return $false
         }
-        Start-Sleep -Milliseconds 60
+        Start-Sleep -Milliseconds 80
         if ((Get-MystRemoteModuleBase -ProcessId $Process.Id -DllPath $DllPath) -eq [IntPtr]::Zero) {
+            Write-MystDiag '  Module unmapped.'
             return $true
         }
     }
 
+    Write-MystDiag '  Module still mapped after timed FreeLibrary attempts.'
     return $false
 }
 
@@ -2082,6 +2183,7 @@ public class MystInjector {
 
     public static string LastError = "";
     public static uint LastExportResult = 0;
+    const uint RemoteWaitMs = 4000;
 
     static IntPtr OpenProcessWithFallback(int pid) {
         uint[] masks = new uint[] { 0x1F0FFF, 0x043A, 0x1410 };
@@ -2114,20 +2216,14 @@ public class MystInjector {
         IntPtr l = GetProcAddress(k, "LoadLibraryW");
         IntPtr t = CreateRemoteThreadEx(h, l, a);
         if (t == IntPtr.Zero) { LastError = "CreateRemoteThread"; CloseHandle(h); return -1; }
-        WaitForSingleObject(t, 15000);
+        WaitForSingleObject(t, RemoteWaitMs);
         uint exitCode = 0;
         GetExitCodeThread(t, out exitCode);
         CloseHandle(t);
         CloseHandle(h);
-        // exitCode is the low 32 bits of the HMODULE that LoadLibraryW returned.
-        // On x64 the module usually loads high enough that bit 31 is set, and
-        // returning that as a signed int made a successful load look like a
-        // negative error code. Report a plain success flag instead.
         if (exitCode != 0) return 1;
-        // A zero exit code is not proof of failure either: the thread result is
-        // truncated and the DLL may already have been present. Trust the module
-        // list over the exit code.
         if (GetModuleBase(pid, d) != IntPtr.Zero) return 1;
+        LastError = "LoadLibraryW returned 0";
         return 0;
     }
 
@@ -2206,7 +2302,7 @@ public class MystInjector {
 
         IntPtr t = CreateRemoteThreadEx(hProc, remoteExport, IntPtr.Zero);
         if (t == IntPtr.Zero) { LastError = "CreateRemoteThread"; CloseHandle(hProc); return false; }
-        WaitForSingleObject(t, 15000);
+        WaitForSingleObject(t, RemoteWaitMs);
         uint exitCode = 0;
         GetExitCodeThread(t, out exitCode);
         LastExportResult = exitCode;
@@ -2222,14 +2318,16 @@ public class MystInjector {
     }
 
     public static bool FreeModuleOnce(int pid, IntPtr modBase) {
+        LastError = "";
         IntPtr hProc = OpenProcess(0x1F0FFF, false, pid);
-        if (hProc == IntPtr.Zero) return false;
+        if (hProc == IntPtr.Zero) { LastError = "OpenProcess"; return false; }
         IntPtr k = GetModuleHandle("kernel32.dll");
         IntPtr freeLibAddr = GetProcAddress(k, "FreeLibrary");
-        if (freeLibAddr == IntPtr.Zero) { CloseHandle(hProc); return false; }
+        if (freeLibAddr == IntPtr.Zero) { LastError = "GetProcAddress(FreeLibrary)"; CloseHandle(hProc); return false; }
         IntPtr t = CreateRemoteThread(hProc, IntPtr.Zero, 0, freeLibAddr, modBase, 0, IntPtr.Zero);
-        if (t == IntPtr.Zero) { CloseHandle(hProc); return false; }
-        WaitForSingleObject(t, 0xFFFFFFFF);
+        if (t == IntPtr.Zero) { LastError = "CreateRemoteThread(FreeLibrary)"; CloseHandle(hProc); return false; }
+        uint wait = WaitForSingleObject(t, RemoteWaitMs);
+        if (wait == 0x00000102) { LastError = "FreeLibrary timeout"; CloseHandle(t); CloseHandle(hProc); return false; }
         CloseHandle(t);
         CloseHandle(hProc);
         return true;
@@ -2238,11 +2336,12 @@ public class MystInjector {
     public static bool FreeModuleCompletely(int pid, string dllPath) {
         IntPtr modBase = GetModuleBase(pid, dllPath);
         if (modBase == IntPtr.Zero) return true;
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 5; i++) {
             if (!FreeModuleOnce(pid, modBase)) return false;
-            System.Threading.Thread.Sleep(60);
+            System.Threading.Thread.Sleep(80);
             if (GetModuleBase(pid, dllPath) == IntPtr.Zero) return true;
         }
+        LastError = "FreeModuleCompletely timeout";
         return false;
     }
 }
