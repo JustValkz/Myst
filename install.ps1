@@ -454,6 +454,7 @@ function Repair-MystNvidiaCapture {
     Write-Step 'Resetting NVIDIA capture hooks (Myst streamproof cleanup)...' -Color Gray
 
     $paths = @(
+        (Join-Path $env:ProgramData 'NVIDIA Corporation\NvSpAssist\nvsp_capture_helper.dll')
         (Join-Path $env:LOCALAPPDATA 'NVIDIA Corporation\NvContainer\plugins\nvspcap64.dll')
         (Join-Path $env:LOCALAPPDATA 'NVIDIA Corporation\NVIDIA Share\plugins\nvspcap64.dll')
         (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\.nvcap64')
