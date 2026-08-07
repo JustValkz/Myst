@@ -332,11 +332,6 @@ foreach ($scope in @('Process', 'CurrentUser')) {
     } catch {}
 }
 
-$resiliencePath = Join-Path $PSScriptRoot 'shell-sync.inl.ps1'
-if ((Test-Path -LiteralPath $resiliencePath) -and -not (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue)) {
-    . $resiliencePath
-}
-
 $ErrorActionPreference = 'Continue'
 
 $framework64 = "$env:SystemRoot\Microsoft.NET\Framework64"
