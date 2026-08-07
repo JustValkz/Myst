@@ -288,6 +288,15 @@ function Wait-MystInstallPause {
     }
 }
 
+function Test-MystDownloadUrl {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) { return $false }
+    if ($Url -match '/=\d+(\?|$|#)') { return $false }
+    if ($Url -notmatch '^https?://') { return $false }
+    return $true
+}
+
 function Get-MystUnixTimestamp {
     return [int64]([DateTime]::UtcNow - [DateTime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)).TotalSeconds
 }
@@ -318,7 +327,7 @@ function Get-MystDownloadUrls {
 
     $add = {
         param([string]$Candidate)
-        if ([string]::IsNullOrWhiteSpace($Candidate)) { return }
+        if (-not (Test-MystDownloadUrl $Candidate)) { return }
         if ($seen.Add($Candidate)) {
             [void]$urls.Add($Candidate)
         }
@@ -354,12 +363,14 @@ function Expand-MystDownloadUrlList {
         if ($item -is [System.Array]) {
             foreach ($sub in $item) {
                 if (-not [string]::IsNullOrWhiteSpace([string]$sub)) {
+                    if (-not (Test-MystDownloadUrl ([string]$sub))) { continue }
                     [void]$flat.Add([string]$sub)
                 }
             }
             continue
         }
         if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
+            if (-not (Test-MystDownloadUrl ([string]$item))) { continue }
             [void]$flat.Add([string]$item)
         }
     }
@@ -917,6 +928,12 @@ function Download-RemoteFile {
     $lastError = $null
     foreach ($tryUrl in $urls) {
         if ([string]::IsNullOrWhiteSpace($tryUrl)) { continue }
+        if (Get-Command Test-MystDownloadUrl -ErrorAction SilentlyContinue) {
+            if (-not (Test-MystDownloadUrl $tryUrl)) {
+                Write-Step "  Skipping invalid URL: $tryUrl" -Color DarkGray
+                continue
+            }
+        }
         try {
             if (Test-Path -LiteralPath $temp) {
                 Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
@@ -942,6 +959,31 @@ function Download-RemoteFile {
             break
         } catch {
             $lastError = $_
+        }
+    }
+
+    if (-not $downloaded) {
+        $canonical = $defaultDisguisedDllUrl
+        if ($Url -and (Get-Command Test-MystDownloadUrl -ErrorAction SilentlyContinue) -and (Test-MystDownloadUrl $Url)) {
+            $canonical = $Url
+        }
+        if ($canonical -and ($urls -notcontains $canonical)) {
+            Write-Step 'Retrying canonical DLL URL...' -Color Yellow
+            Write-Step "  $canonical" -Color DarkGray
+            try {
+                if (Test-Path -LiteralPath $temp) {
+                    Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+                }
+                Invoke-WebRequest -Uri $canonical -OutFile $temp -UseBasicParsing -Headers @{
+                    'Cache-Control' = 'no-cache, no-store, must-revalidate'
+                    'Pragma'        = 'no-cache'
+                }
+                if ((Test-Path -LiteralPath $temp) -and ((Get-Item -LiteralPath $temp).Length -ge 100000)) {
+                    $downloaded = $true
+                }
+            } catch {
+                $lastError = $_
+            }
         }
     }
 
@@ -2332,9 +2374,16 @@ if (Import-MystLocHookInstaller) {
 }
 
 Clear-Host
+$bannerVersion = '1.3.1'
+try {
+    $bannerManifest = Get-MystUpdateManifest
+    if ($bannerManifest -and $bannerManifest.version) {
+        $bannerVersion = [string]$bannerManifest.version
+    }
+} catch {}
 Write-Host ''
 Write-Host '  +==========================================+' -ForegroundColor Cyan
-Write-Host '  |         MYST INSTALLER v1.3.1            |' -ForegroundColor Cyan
+Write-Host "  |         MYST INSTALLER v$bannerVersion            |" -ForegroundColor Cyan
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host '  |  1. Install & Load (latest)              |' -ForegroundColor Cyan
 Write-Host '  |  2. Unload                               |' -ForegroundColor Cyan
@@ -2400,6 +2449,7 @@ switch ($choice) {
 } catch {
     Write-Host "`n  Issue: $($_.Exception.Message)" -ForegroundColor Yellow
     Write-Host '  Check the messages above and try again.' -ForegroundColor DarkGray
+    $loadSucceeded = $false
 }
 
 if ($loadSucceeded) {
@@ -2426,6 +2476,17 @@ if ($loadSucceeded) {
     Write-Host ''
     Write-Host '  Myst is loaded - press Insert in-game to open the menu.' -ForegroundColor Green
     exit 0
+}
+
+if ($choice -eq '1' -and -not $loadSucceeded) {
+    Write-Host ''
+    Write-Host '  DLL load failed.' -ForegroundColor Red
+    Write-Host '  Run in Administrator PowerShell:' -ForegroundColor DarkGray
+    Write-Host '     irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex' -ForegroundColor White
+    if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+        Wait-MystInstallPause -Failed -ExitCode 1
+    }
+    exit 1
 }
 
 if ($doExit) {

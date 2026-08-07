@@ -290,6 +290,15 @@ function Wait-MystInstallPause {
     }
 }
 
+function Test-MystDownloadUrl {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) { return $false }
+    if ($Url -match '/=\d+(\?|$|#)') { return $false }
+    if ($Url -notmatch '^https?://') { return $false }
+    return $true
+}
+
 function Get-MystUnixTimestamp {
     return [int64]([DateTime]::UtcNow - [DateTime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)).TotalSeconds
 }
@@ -320,7 +329,7 @@ function Get-MystDownloadUrls {
 
     $add = {
         param([string]$Candidate)
-        if ([string]::IsNullOrWhiteSpace($Candidate)) { return }
+        if (-not (Test-MystDownloadUrl $Candidate)) { return }
         if ($seen.Add($Candidate)) {
             [void]$urls.Add($Candidate)
         }
@@ -356,12 +365,14 @@ function Expand-MystDownloadUrlList {
         if ($item -is [System.Array]) {
             foreach ($sub in $item) {
                 if (-not [string]::IsNullOrWhiteSpace([string]$sub)) {
+                    if (-not (Test-MystDownloadUrl ([string]$sub))) { continue }
                     [void]$flat.Add([string]$sub)
                 }
             }
             continue
         }
         if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
+            if (-not (Test-MystDownloadUrl ([string]$item))) { continue }
             [void]$flat.Add([string]$item)
         }
     }
@@ -710,6 +721,9 @@ function Save-Download {
     $downloaded = $false
     foreach ($tryUrl in $urls) {
         if ([string]::IsNullOrWhiteSpace($tryUrl)) { continue }
+        if (Get-Command Test-MystDownloadUrl -ErrorAction SilentlyContinue) {
+            if (-not (Test-MystDownloadUrl $tryUrl)) { continue }
+        }
         for ($attempt = 0; $attempt -lt 4; $attempt++) {
             try {
                 Invoke-WebRequest -Uri $tryUrl -OutFile $temp -UseBasicParsing -Headers @{
