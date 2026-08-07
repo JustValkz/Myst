@@ -347,6 +347,27 @@ function Get-MystDownloadUrls {
     return @($urls.ToArray())
 }
 
+function Expand-MystDownloadUrlList {
+    param([object]$Raw)
+
+    $flat = New-Object System.Collections.Generic.List[string]
+    foreach ($item in @($Raw)) {
+        if ($null -eq $item) { continue }
+        if ($item -is [System.Array]) {
+            foreach ($sub in $item) {
+                if (-not [string]::IsNullOrWhiteSpace([string]$sub)) {
+                    [void]$flat.Add([string]$sub)
+                }
+            }
+            continue
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
+            [void]$flat.Add([string]$item)
+        }
+    }
+    return @($flat.ToArray())
+}
+
 function Repair-MystNvidiaCapture {
     Write-Step 'Resetting NVIDIA capture hooks (Myst streamproof cleanup)...' -Color Gray
 
@@ -672,12 +693,17 @@ function Save-Download {
 
     $urls = @($Url)
     if (Get-Command Get-MystDownloadUrls -ErrorAction SilentlyContinue) {
-        $urls = @(Get-MystDownloadUrls -Url $Url -KnownFileNames @((Split-Path -Leaf $Destination)))
+        $urls = Get-MystDownloadUrls -Url $Url -KnownFileNames @((Split-Path -Leaf $Destination))
     } elseif (Get-Command Get-MystUrlLeafName -ErrorAction SilentlyContinue) {
         $leaf = Get-MystUrlLeafName -Url $Url
         if ($leaf -and (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue)) {
             $urls = @($Url) + @(Get-MystGitHubMirrorUrls -RelativePath $leaf)
         }
+    }
+    if (Get-Command Expand-MystDownloadUrlList -ErrorAction SilentlyContinue) {
+        $urls = Expand-MystDownloadUrlList $urls
+    } else {
+        $urls = @($urls)
     }
 
     $last = $null

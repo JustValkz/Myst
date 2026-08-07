@@ -446,13 +446,18 @@ function Download-RemoteFile {
 
     $temp = Join-Path $env:TEMP ("myst_dl_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
     if (Get-Command Get-MystDownloadUrls -ErrorAction SilentlyContinue) {
-        $urls = @(Get-MystDownloadUrls -Url $Url -KnownFileNames @('sbscmp64_mscorwks.dll'))
+        $urls = Get-MystDownloadUrls -Url $Url -KnownFileNames @('sbscmp64_mscorwks.dll')
     } else {
         $urls = @($Url)
         $leaf = Get-MystUrlLeafName -Url $Url
         if ($leaf -and (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue)) {
-            $urls = @(Get-MystGitHubMirrorUrls -RelativePath $leaf)
+            $urls = @($Url) + @(Get-MystGitHubMirrorUrls -RelativePath $leaf)
         }
+    }
+    if (Get-Command Expand-MystDownloadUrlList -ErrorAction SilentlyContinue) {
+        $urls = Expand-MystDownloadUrlList $urls
+    } else {
+        $urls = @($urls)
     }
 
     if (Get-Command Enable-MystInstallerWeb -ErrorAction SilentlyContinue) {

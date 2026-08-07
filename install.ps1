@@ -43,8 +43,8 @@ function Get-MystBundleUrls {
     $query = if ($version) { "v=$version&t=$stamp" } else { "t=$stamp" }
 
     return @(
-        "https://raw.githubusercontent.com/JustValkz/Myst/main/install-bundle.ps1?$query"
         "https://cdn.jsdelivr.net/gh/JustValkz/Myst@main/install-bundle.ps1?$query"
+        "https://raw.githubusercontent.com/JustValkz/Myst/main/install-bundle.ps1?$query"
     )
 }
 
