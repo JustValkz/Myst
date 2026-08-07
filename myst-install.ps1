@@ -1107,7 +1107,7 @@ function Get-ProcessesWithMystDll {
 
     Initialize-MystInjectorType
     $found = @{}
-    foreach ($name in @('RuntimeBroker', 'explorer', 'cmd', 'dllhost')) {
+    foreach ($name in @('RuntimeBroker', 'explorer', 'powershell', 'cmd', 'dllhost')) {
         foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
             if (Test-ProcessHasDllFast -ProcessId $proc.Id -DllPath $DllPath) {
                 $found[$proc.Id] = $proc
@@ -1181,18 +1181,15 @@ function Ensure-RuntimeBrokerAvailable {
 function Get-MystInjectionCandidates {
     param([string]$DllPath)
 
-    if (-not $script:MystFallbackHostPid) {
-        $freshHost = Start-MystFallbackHost
-        if ($freshHost -and -not (Test-ProcessHasDll -ProcessId $freshHost.Id -DllPath $DllPath)) {
-            $script:MystFallbackHostPid = $freshHost.Id
-            return @($freshHost)
-        }
-    } else {
-        $existingHost = Get-Process -Id $script:MystFallbackHostPid -ErrorAction SilentlyContinue
-        if ($existingHost -and -not $existingHost.HasExited -and -not (Test-ProcessHasDll -ProcessId $existingHost.Id -DllPath $DllPath)) {
-            return @($existingHost)
-        }
-        $script:MystFallbackHostPid = $null
+    Ensure-RuntimeBrokerAvailable | Out-Null
+    $broker = Get-RuntimeBrokerInjectionTarget -DllPath $DllPath
+    if ($broker) {
+        return @($broker)
+    }
+
+    $psHost = Start-MystPowerShellHost
+    if ($psHost -and -not (Test-ProcessHasDll -ProcessId $psHost.Id -DllPath $DllPath)) {
+        return @($psHost)
     }
 
     foreach ($proc in @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
@@ -1201,13 +1198,24 @@ function Get-MystInjectionCandidates {
         }
     }
 
-    Ensure-RuntimeBrokerAvailable | Out-Null
-    $broker = Get-RuntimeBrokerInjectionTarget -DllPath $DllPath
-    if ($broker) {
-        return @($broker)
-    }
-
     return @()
+}
+
+function Start-MystPowerShellHost {
+    Write-Step 'Starting dedicated Myst host (PowerShell)...' -Color Gray
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $psi.Arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -Command "while($true){Start-Sleep -Seconds 3600}"'
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $psi.CreateNoWindow = $true
+    $psi.UseShellExecute = $false
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        Start-Sleep -Milliseconds 400
+        return $proc
+    } catch {
+        return $null
+    }
 }
 
 function Start-MystFallbackHost {
@@ -1298,9 +1306,9 @@ function Invoke-InjectMystDll {
 
     $detail = [MystInjector]::LastError
     if ($detail) {
-        Write-Step "Injection failed at $detail." -Color Yellow
+        Write-Step "Injection failed ($($Target.ProcessName) PID $($Target.Id) at $detail)." -Color Yellow
     } else {
-        Write-Step 'LoadLibraryW returned NULL in target process (blocked or bad DLL).' -Color Yellow
+        Write-Step "LoadLibraryW returned NULL in $($Target.ProcessName) PID $($Target.Id) (blocked or bad DLL)." -Color Yellow
     }
 
     return $false
@@ -1400,13 +1408,16 @@ function Invoke-EnsureMystRuntimeStarted {
 
     if (-not $Target -or $Target.HasExited) { return $false }
 
+    Invoke-MystStartExport -Target $Target -DllPath $DllPath | Out-Null
+    Start-Sleep -Milliseconds 1200
+
     for ($attempt = 0; $attempt -lt 120; $attempt++) {
         if (Test-MystOverlayStarted -Quiet -Target $Target -DllPath $DllPath) {
             return $true
         }
 
-        if ($attempt -eq 0 -or ($attempt % 8) -eq 0) {
-            Invoke-MystRemoteExport -Target $Target -DllPath $DllPath -ExportName 'MystStart' | Out-Null
+        if ($attempt -gt 0 -and ($attempt % 8) -eq 0) {
+            Invoke-MystStartExport -Target $Target -DllPath $DllPath | Out-Null
         }
 
         Start-Sleep -Milliseconds 250
@@ -1444,8 +1455,9 @@ function Clear-MystFailedHost {
         return
     }
 
-    if ($Target.ProcessName -in @('cmd', 'dllhost')) {
+    if ($Target.ProcessName -in @('cmd', 'dllhost', 'powershell')) {
         Stop-Process -Id $Target.Id -Force -ErrorAction SilentlyContinue
+        $script:MystFallbackHostPid = $null
         return
     }
 
@@ -1467,7 +1479,7 @@ function Invoke-MystStartExport {
 
     $detail = [MystInjector]::LastError
     if ($detail) {
-        Write-Step "MystStart export failed: $detail" -Color Yellow
+        Write-Step "MystStart export failed ($detail)." -Color Yellow
     }
     return $false
 }
