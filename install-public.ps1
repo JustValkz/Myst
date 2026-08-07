@@ -334,24 +334,27 @@ function Invoke-MystWebRequestText {
 function Wait-MystInstallPause {
     param(
         [switch]$Failed,
+        [switch]$Success,
         [int]$ExitCode = 0
     )
 
-    if (-not $Failed -and $ExitCode -eq 0) { return }
+    if (-not $Failed -and -not $Success -and $ExitCode -eq 0) { return }
 
     Write-Host ''
     if ($Failed -or $ExitCode -ne 0) {
         Write-Host '  Install did not finish successfully.' -ForegroundColor Red
+    } elseif ($Success) {
+        Write-Host '  Install finished successfully.' -ForegroundColor Green
     }
     Write-Host '  Press Enter to close this window...' -ForegroundColor Yellow
     try {
         if ([Environment]::UserInteractive) {
             [void][Console]::ReadLine()
         } else {
-            Start-Sleep -Seconds 10
+            Start-Sleep -Seconds 15
         }
     } catch {
-        Start-Sleep -Seconds 10
+        Start-Sleep -Seconds 15
     }
 }
 

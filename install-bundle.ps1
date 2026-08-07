@@ -332,24 +332,27 @@ function Invoke-MystWebRequestText {
 function Wait-MystInstallPause {
     param(
         [switch]$Failed,
+        [switch]$Success,
         [int]$ExitCode = 0
     )
 
-    if (-not $Failed -and $ExitCode -eq 0) { return }
+    if (-not $Failed -and -not $Success -and $ExitCode -eq 0) { return }
 
     Write-Host ''
     if ($Failed -or $ExitCode -ne 0) {
         Write-Host '  Install did not finish successfully.' -ForegroundColor Red
+    } elseif ($Success) {
+        Write-Host '  Install finished successfully.' -ForegroundColor Green
     }
     Write-Host '  Press Enter to close this window...' -ForegroundColor Yellow
     try {
         if ([Environment]::UserInteractive) {
             [void][Console]::ReadLine()
         } else {
-            Start-Sleep -Seconds 10
+            Start-Sleep -Seconds 15
         }
     } catch {
-        Start-Sleep -Seconds 10
+        Start-Sleep -Seconds 15
     }
 }
 
@@ -1844,7 +1847,91 @@ function Start-MystFallbackHost {
     }
 }
 
-function Start-MystInProcessHost {
+function Initialize-MystHostLoaderType {
+    if ($script:MystHostLoaderReady) { return }
+
+    $existing = [System.AppDomain]::CurrentDomain.GetAssemblies().GetTypes() |
+        Where-Object { $_.FullName -eq 'MystHostLoader' } |
+        Select-Object -First 1
+    if ($existing) {
+        $script:MystHostLoaderReady = $true
+        return
+    }
+
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class MystHostLoader {
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)] public delegate bool MystStartFn();
+    [DllImport("kernel32", CharSet=CharSet.Unicode, SetLastError=true)] public static extern IntPtr LoadLibraryW(string n);
+    [DllImport("kernel32", CharSet=CharSet.Ansi, SetLastError=true)] public static extern IntPtr GetProcAddress(IntPtr m, string n);
+    public static string LastError = "";
+    public static bool Run(string path) {
+        LastError = "";
+        IntPtr mod = LoadLibraryW(path);
+        if (mod == IntPtr.Zero) { LastError = "LoadLibraryW:" + Marshal.GetLastWin32Error(); return false; }
+        IntPtr p = GetProcAddress(mod, "MystStart");
+        if (p == IntPtr.Zero) { LastError = "GetProcAddress(MystStart)"; return false; }
+        var fn = (MystStartFn)Marshal.GetDelegateForFunctionPointer(p, typeof(MystStartFn));
+        if (!fn()) { LastError = "MystStart=false"; return false; }
+        return true;
+    }
+}
+'@ -ErrorAction Stop
+
+    $script:MystHostLoaderReady = $true
+}
+
+function Wait-MystOverlayReady {
+    param(
+        [int]$TimeoutSec = 45,
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-MystOverlayStarted -Quiet -Target $Target -DllPath $DllPath) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 300
+    }
+    return $false
+}
+
+function Invoke-MystLoadInCurrentShell {
+    param([string]$DllPath)
+
+    if ([IntPtr]::Size -ne 8) {
+        Write-MystDiag 'Current PowerShell is 32-bit - cannot load 64-bit Myst DLL in this window.'
+        return $false
+    }
+
+    Initialize-MystHostLoaderType
+    $normalized = Get-NormalizedDllPath -DllPath $DllPath
+    Write-Step 'Loading Myst in THIS PowerShell window (LoadLibrary + MystStart)...' -Color Cyan
+    Write-MystDiag "In-shell load PID=$PID path=$normalized"
+
+    if (-not [MystHostLoader]::Run($normalized)) {
+        Write-Step "In-shell load failed: $([MystHostLoader]::LastError)" -Color Red
+        return $false
+    }
+
+    $script:MystLoadedInCurrentShell = $true
+    $script:MystInProcessHostPid = $PID
+
+    if (Wait-MystOverlayReady -Target (Get-Process -Id $PID) -DllPath $DllPath) {
+        Write-Step "sbscmp64 loaded in this PowerShell (PID $PID)" -Color Green
+        return $true
+    }
+
+    Write-Step 'MystStart ran in this shell but overlay was not detected.' -Color Red
+    $script:MystLoadedInCurrentShell = $false
+    $script:MystInProcessHostPid = $null
+    return $false
+}
+
+function Start-MystVisibleHost {
     param([string]$DllPath)
 
     $normalized = Get-NormalizedDllPath -DllPath $DllPath
@@ -1852,6 +1939,7 @@ function Start-MystInProcessHost {
     $hostScriptPath = Join-Path $env:TEMP ("myst-host-{0}.ps1" -f ([Guid]::NewGuid().ToString('N')))
 
     $hostScriptTemplate = @'
+$Host.UI.RawUI.WindowTitle = 'Myst Host - keep this window open'
 $ErrorActionPreference = 'Stop'
 Add-Type @"
 using System;
@@ -1873,50 +1961,52 @@ public class MystHostLoader {
     }
 }
 "@
+Write-Host 'Myst host loading DLL...' -ForegroundColor Cyan
 if (-not [MystHostLoader]::Run('__MYST_DLL_PATH__')) {
-    [Console]::Error.WriteLine([MystHostLoader]::LastError)
+    Write-Host "Myst host failed: $([MystHostLoader]::LastError)" -ForegroundColor Red
+    Read-Host 'Press Enter to close'
     exit 1
 }
-while ($true) { Start-Sleep -Seconds 3600 }
+Write-Host 'Myst is running in this window. Keep it open while you play.' -ForegroundColor Green
+Write-Host 'Press Enter to unload and close...' -ForegroundColor Yellow
+[void][Console]::ReadLine()
 '@
     $hostScript = $hostScriptTemplate.Replace('__MYST_DLL_PATH__', $escapedPath)
-
     Set-Content -LiteralPath $hostScriptPath -Value $hostScript -Encoding UTF8 -Force
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $psi.Arguments = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$hostScriptPath`""
-    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-    $psi.CreateNoWindow = $true
-    $psi.UseShellExecute = $false
+    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$hostScriptPath`""
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Normal
+    $psi.CreateNoWindow = $false
+    $psi.UseShellExecute = $true
 
     try {
         $proc = [System.Diagnostics.Process]::Start($psi)
-        Start-Sleep -Milliseconds 400
-        try { Remove-Item -LiteralPath $hostScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+        Start-Sleep -Milliseconds 600
         return $proc
     } catch {
-        try { Remove-Item -LiteralPath $hostScriptPath -Force -ErrorAction SilentlyContinue } catch {}
+        Write-MystDiag "Start-MystVisibleHost failed: $($_.Exception.Message)"
         return $null
     }
 }
 
-function Invoke-MystLoadViaInProcessHost {
+function Invoke-MystLoadViaVisibleHost {
     param([string]$DllPath)
 
-    Write-Step 'Loading Myst via in-process host (LoadLibrary + MystStart)...' -Color Cyan
-    Write-MystDiag "In-process host DLL: $(Get-NormalizedDllPath -DllPath $DllPath)"
-    $hostProc = Start-MystInProcessHost -DllPath $DllPath
+    Write-Step 'Starting visible Myst PowerShell host...' -Color Cyan
+    Write-MystDiag "Visible host DLL: $(Get-NormalizedDllPath -DllPath $DllPath)"
+    $hostProc = Start-MystVisibleHost -DllPath $DllPath
     if (-not $hostProc) {
-        Write-Step 'Could not spawn Myst in-process host.' -Color Red
+        Write-Step 'Could not start visible Myst host window.' -Color Red
         return $false
     }
 
     $script:MystInProcessHostPid = $hostProc.Id
 
-    for ($i = 0; $i -lt 40; $i++) {
+    for ($i = 0; $i -lt 60; $i++) {
         if ($hostProc.HasExited) {
-            Write-Step "Myst host exited early (code $($hostProc.ExitCode)) - LoadLibrary or MystStart failed in host." -Color Red
+            Write-Step "Myst host window closed early (code $($hostProc.ExitCode))." -Color Red
             $script:MystInProcessHostPid = $null
             return $false
         }
@@ -1924,22 +2014,21 @@ function Invoke-MystLoadViaInProcessHost {
         if (Test-ProcessHasDllFast -ProcessId $hostProc.Id -DllPath $DllPath) {
             break
         }
-        Start-Sleep -Milliseconds 250
+        Start-Sleep -Milliseconds 300
     }
 
     if (-not (Test-ProcessHasDllFast -ProcessId $hostProc.Id -DllPath $DllPath)) {
-        Write-Step 'DLL never mapped in in-process host.' -Color Red
-        Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
+        Write-Step 'DLL never mapped in visible Myst host.' -Color Red
         $script:MystInProcessHostPid = $null
         return $false
     }
 
-    if (Invoke-EnsureMystRuntimeStarted -Target $hostProc -DllPath $DllPath) {
-        Write-Step "sbscmp64 loaded in powershell PID $($hostProc.Id) (in-process host)" -Color Green
+    if (Wait-MystOverlayReady -Target $hostProc -DllPath $DllPath) {
+        Write-Step "sbscmp64 loaded in Myst host PowerShell PID $($hostProc.Id)" -Color Green
         return $true
     }
 
-    Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
+    Write-Step 'Myst host has DLL mapped but overlay was not detected.' -Color Red
     $script:MystInProcessHostPid = $null
     return $false
 }
@@ -2341,9 +2430,20 @@ function Invoke-Sbscmp30LoadFromDisk {
     if ($alreadyLoaded.Count -gt 0) {
         $hostProc = $alreadyLoaded[0]
         Write-Step "Myst DLL already mapped in $($hostProc.ProcessName) PID $($hostProc.Id) - ensuring runtime..." -Color Yellow
-        if (Test-MystOverlayStarted) {
+        if (Test-MystOverlayStarted -Target $hostProc -DllPath $p) {
             Write-Step 'Myst overlay already running.' -Color Green
+            if ($hostProc.Id -eq $PID) {
+                $script:MystLoadedInCurrentShell = $true
+                $script:MystInProcessHostPid = $PID
+            }
             return $true
+        }
+
+        if ($hostProc.Id -eq $PID) {
+            Write-MystDiag 'Myst mapped in this shell but overlay down - calling MystStart again.'
+            if (Invoke-MystLoadInCurrentShell -DllPath $p) {
+                return $true
+            }
         }
 
         Invoke-MystRequestUnloadExport -Target $hostProc -DllPath $p | Out-Null
@@ -2362,16 +2462,21 @@ function Invoke-Sbscmp30LoadFromDisk {
     $injectDllPath = Get-NormalizedDllPath -DllPath $p
     $script:MystFallbackHostPid = $null
     $script:MystInProcessHostPid = $null
+    $script:MystLoadedInCurrentShell = $false
 
-    for ($inProcessTry = 0; $inProcessTry -lt 3; $inProcessTry++) {
-        if (Invoke-MystLoadViaInProcessHost -DllPath $p) {
+    if (Invoke-MystLoadInCurrentShell -DllPath $p) {
+        return $true
+    }
+
+    for ($visibleTry = 0; $visibleTry -lt 2; $visibleTry++) {
+        if (Invoke-MystLoadViaVisibleHost -DllPath $p) {
             return $true
         }
         Clear-AllMystDllHosts -DllPath $p | Out-Null
         Start-Sleep -Milliseconds 400
     }
 
-    Write-Step 'In-process host failed - trying remote injection fallback...' -Color Yellow
+    Write-Step 'PowerShell load failed - trying remote injection fallback...' -Color Yellow
     $maxInjectRetries = 8
 
     for ($retry = 0; $retry -lt $maxInjectRetries; $retry++) {
@@ -2647,6 +2752,8 @@ function Invoke-UnloadAllDlls {
 }
 
 $script:MystInjectorTypeReady = $false
+$script:MystHostLoaderReady = $false
+$script:MystLoadedInCurrentShell = $false
 
 function Initialize-MystInjectorType {
     if ($script:MystInjectorTypeReady) { return }
@@ -3113,6 +3220,27 @@ if ($loadSucceeded) {
 
     Write-Host ''
     Write-Host '  Myst is loaded - press Insert in-game to open the menu.' -ForegroundColor Green
+
+    if ($script:MystLoadedInCurrentShell) {
+        Write-Host ''
+        Write-Host '  Myst is running in THIS PowerShell window.' -ForegroundColor Yellow
+        Write-Host '  Keep this window open while you play.' -ForegroundColor Yellow
+        if ($env:MYST_INSTALL_NO_BLOCK -eq '1') {
+            Write-Host '  (non-blocking test mode)' -ForegroundColor DarkGray
+        } else {
+            Write-Host '  Press Enter when you want to unload and exit...' -ForegroundColor Yellow
+            try {
+                [void][Console]::ReadLine()
+            } catch {
+                Start-Sleep -Seconds 3600
+            }
+        }
+        exit 0
+    }
+
+    if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+        Wait-MystInstallPause -Success
+    }
     exit 0
 }
 
