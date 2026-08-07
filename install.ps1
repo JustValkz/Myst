@@ -41,11 +41,31 @@ function Get-MystBundleUrls {
 
     $stamp = Get-MystUnixTimestamp
     $query = if ($version) { "v=$version&t=$stamp" } else { "t=$stamp" }
+    $commit = $null
+    if ($manifest -and $manifest.published_commit) {
+        $commit = [string]$manifest.published_commit
+    }
 
-    return @(
-        "https://cdn.jsdelivr.net/gh/JustValkz/Myst@main/install-bundle.ps1?$query"
-        "https://raw.githubusercontent.com/JustValkz/Myst/main/install-bundle.ps1?$query"
-    )
+    $urls = New-Object System.Collections.Generic.List[string]
+    if ($commit) {
+        [void]$urls.Add("https://raw.githubusercontent.com/JustValkz/Myst/$commit/install-bundle.ps1")
+        [void]$urls.Add("https://cdn.jsdelivr.net/gh/JustValkz/Myst@$commit/install-bundle.ps1?$query")
+    }
+    [void]$urls.Add("https://raw.githubusercontent.com/JustValkz/Myst/main/install-bundle.ps1?$query")
+    [void]$urls.Add("https://cdn.jsdelivr.net/gh/JustValkz/Myst@main/install-bundle.ps1?$query")
+    return @($urls.ToArray())
+}
+
+function Convert-MystWebResponseText {
+    param([object]$Content)
+
+    if ($null -eq $Content) { return '' }
+    if ($Content -is [string]) { return [string]$Content }
+    if ($Content -is [byte[]]) {
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        return $utf8.GetString([byte[]]$Content)
+    }
+    return [string]$Content
 }
 
 function Invoke-MystWebRequestText {
@@ -68,10 +88,11 @@ function Invoke-MystWebRequestText {
         if ([string]::IsNullOrWhiteSpace($targetUri)) { continue }
         for ($attempt = 0; $attempt -lt $Retries; $attempt++) {
             try {
-                return (Invoke-WebRequest -Uri $targetUri -UseBasicParsing -Headers @{
+                $response = Invoke-WebRequest -Uri $targetUri -UseBasicParsing -Headers @{
                     'Cache-Control' = 'no-cache, no-store, must-revalidate'
                     'Pragma'        = 'no-cache'
-                }).Content
+                }
+                return (Convert-MystWebResponseText $response.Content)
             } catch {
                 $last = $_
                 if ($attempt -lt ($Retries - 1)) {
