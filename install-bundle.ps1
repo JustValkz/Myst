@@ -22,6 +22,11 @@ function Initialize-MystPsLogSession {
         [string]$SessionName = 'myst-session'
     )
 
+    if (-not [string]::IsNullOrWhiteSpace($script:MystPsLogPath) -and (Test-Path -LiteralPath $script:MystPsLogPath)) {
+        Write-MystPsLog "Continuing PowerShell log session ($SessionName)."
+        return $script:MystPsLogPath
+    }
+
     $dir = Get-MystPsLogDirectory
     if (-not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -584,6 +589,85 @@ function Test-DllPathMatch {
 function Write-Step {
     param([string]$Message, [string]$Color = 'Cyan')
     Write-Host "  [$((Get-Date).ToString('HH:mm:ss'))] $Message" -ForegroundColor $Color
+    if (Get-Command Write-MystPsLog -ErrorAction SilentlyContinue) {
+        $level = switch ($Color) {
+            'Green' { 'PASS' }
+            'Red' { 'FAIL' }
+            'Yellow' { 'WARN' }
+            'DarkGray' { 'INFO' }
+            'Gray' { 'INFO' }
+            default { 'INFO' }
+        }
+        Write-MystPsLog -Message $Message -Level $level
+    }
+}
+
+function Write-MystInstallSummary {
+    param(
+        [bool]$LoadSucceeded,
+        [string]$Choice = '1'
+    )
+
+    if (-not (Get-Command Write-MystPsLog -ErrorAction SilentlyContinue)) { return }
+
+    Write-MystPsLog '--- Install summary ---'
+    Write-MystPsLog ("Choice: {0}" -f $Choice)
+
+    $dllPath = if ($script:p) { [string]$script:p } else { '' }
+    if ($dllPath -and (Test-Path -LiteralPath $dllPath)) {
+        try {
+            $info = Get-Item -LiteralPath $dllPath
+            Write-MystPsLog ("DLL on disk: {0} ({1} bytes, modified {2})" -f $dllPath, $info.Length, $info.LastWriteTime) 'PASS'
+        } catch {
+            Write-MystPsLog ("DLL path exists but could not be read: {0}" -f $dllPath) 'WARN'
+        }
+    } elseif ($dllPath) {
+        Write-MystPsLog ("DLL missing: {0}" -f $dllPath) 'FAIL'
+    }
+
+    $hosts = @()
+    if ($dllPath -and (Get-Command Get-ProcessesWithMystDll -ErrorAction SilentlyContinue)) {
+        $hosts = @(Get-ProcessesWithMystDll -DllPath $dllPath)
+    }
+    if ($hosts.Count -gt 0) {
+        foreach ($hostProc in $hosts) {
+            Write-MystPsLog ("Myst mapped in {0} PID {1}" -f $hostProc.ProcessName, $hostProc.Id) 'INFO'
+        }
+    } else {
+        Write-MystPsLog 'Myst DLL is not loaded in any host process.' 'WARN'
+    }
+
+    $overlayUp = $false
+    if ($hosts.Count -gt 0 -and (Get-Command Test-MystOverlayStarted -ErrorAction SilentlyContinue)) {
+        $overlayUp = Test-MystOverlayStarted -Quiet -Target $hosts[0] -DllPath $dllPath
+    } elseif (Get-Command Test-MystOverlayStarted -ErrorAction SilentlyContinue) {
+        $overlayUp = Test-MystOverlayStarted -Quiet
+    }
+
+    if ($overlayUp) {
+        Write-MystPsLog 'Myst runtime/overlay is running.' 'PASS'
+    } else {
+        Write-MystPsLog 'Myst runtime/overlay was NOT detected.' 'FAIL'
+        Write-MystPsLog 'Common causes: not Administrator, blocked injection, Roblox not open yet, or overlay failed to initialize.' 'WARN'
+        Write-MystPsLog 'Try: option 2 (Unload), then option 1 again in Admin PowerShell. Open Roblox before installing.' 'WARN'
+    }
+
+    if (-not $script:IsAdmin) {
+        Write-MystPsLog 'Installer was NOT elevated (Admin required for private DLL install).' 'FAIL'
+    }
+
+    if ($LoadSucceeded) {
+        Write-MystPsLog 'Result: install/load succeeded.' 'PASS'
+    } else {
+        Write-MystPsLog 'Result: install/load FAILED.' 'FAIL'
+    }
+
+    if ($script:MystPsLogPath) {
+        Write-MystPsLog ("Full log: {0}" -f $script:MystPsLogPath)
+    }
+    if ($script:MystPsLatestLogPath) {
+        Write-MystPsLog ("Latest log: {0}" -f $script:MystPsLatestLogPath)
+    }
 }
 
 function Enable-SeDebugPrivilege {
@@ -1604,16 +1688,22 @@ function Ensure-RuntimeBrokerAvailable {
 function Get-MystInjectionCandidates {
     param([string]$DllPath)
 
-    foreach ($proc in @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
-        if (-not (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath)) {
-            return @($proc)
-        }
+    Ensure-RuntimeBrokerAvailable | Out-Null
+    $broker = Get-RuntimeBrokerInjectionTarget -DllPath $DllPath
+    if ($broker) {
+        return @($broker)
     }
 
     if ($script:MystFallbackHostPid) {
         $fallback = Get-Process -Id $script:MystFallbackHostPid -ErrorAction SilentlyContinue
         if ($fallback -and -not $fallback.HasExited -and -not (Test-ProcessHasDll -ProcessId $fallback.Id -DllPath $DllPath)) {
             return @($fallback)
+        }
+    }
+
+    foreach ($proc in @(Get-Process -Name 'explorer' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+        if (-not (Test-ProcessHasDll -ProcessId $proc.Id -DllPath $DllPath)) {
+            return @($proc)
         }
     }
 
@@ -1810,8 +1900,8 @@ function Invoke-EnsureMystRuntimeStarted {
 
     if (-not $Target -or $Target.HasExited) { return $false }
 
-    for ($attempt = 0; $attempt -lt 80; $attempt++) {
-        if (Test-MystOverlayStarted -Quiet) {
+    for ($attempt = 0; $attempt -lt 120; $attempt++) {
+        if (Test-MystOverlayStarted -Quiet -Target $Target -DllPath $DllPath) {
             return $true
         }
 
@@ -1822,12 +1912,44 @@ function Invoke-EnsureMystRuntimeStarted {
         Start-Sleep -Milliseconds 250
     }
 
-    if (Test-MystOverlayStarted -Quiet) {
+    if (Test-MystOverlayStarted -Quiet -Target $Target -DllPath $DllPath) {
         return $true
     }
 
-    Write-Step 'Myst runtime did not start - overlay window was not detected.' -Color Red
+    $detail = [MystInjector]::LastError
+    if ($detail) {
+        Write-Step "Myst runtime did not start (injector: $detail)." -Color Red
+    } else {
+        Write-Step 'Myst runtime did not start - overlay window was not detected.' -Color Red
+    }
+    Write-Step "Host: $($Target.ProcessName) PID $($Target.Id). Try opening Roblox first, then run install again as Administrator." -Color Yellow
     return $false
+}
+
+function Clear-MystFailedHost {
+    param(
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    if (-not $Target -or $Target.HasExited) { return }
+
+    Write-Step "Clearing failed host $($Target.ProcessName) PID $($Target.Id)..." -Color Yellow
+    Invoke-MystRequestUnloadExport -Target $Target -DllPath $DllPath | Out-Null
+    Invoke-MystRequestStopExport -Target $Target -DllPath $DllPath | Out-Null
+    Start-Sleep -Milliseconds 250
+
+    if ($Target.ProcessName -eq 'RuntimeBroker') {
+        Remove-RuntimeBrokerDll -Process $Target -DllPath $DllPath | Out-Null
+        return
+    }
+
+    if ($Target.ProcessName -in @('cmd', 'dllhost')) {
+        Stop-Process -Id $Target.Id -Force -ErrorAction SilentlyContinue
+        return
+    }
+
+    Clear-MystHostDll -Process $Target -DllPath $DllPath | Out-Null
 }
 
 function Invoke-MystStartExport {
@@ -1850,8 +1972,61 @@ function Invoke-MystStartExport {
     return $false
 }
 
+function Test-MystHostOverlayWindow {
+    param([int]$ProcessId)
+
+    if ($ProcessId -le 0) { return $false }
+
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class MystHostWindowProbe {
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+    public static bool HasOverlayForPid(int pid) {
+        bool found = false;
+        EnumWindows((hWnd, lParam) => {
+            uint windowPid;
+            GetWindowThreadProcessId(hWnd, out windowPid);
+            if ((int)windowPid != pid) return true;
+            var cls = new StringBuilder(256);
+            if (GetClassName(hWnd, cls, cls.Capacity) <= 0) return true;
+            if (cls.ToString() == "Windows.UI.Core.CoreWindow") {
+                found = true;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+}
+'@ -ErrorAction SilentlyContinue
+
+    return [MystHostWindowProbe]::HasOverlayForPid($ProcessId)
+}
+
+function Test-MystRuntimeRunning {
+    param(
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
+
+    if (-not $Target -or $Target.HasExited) { return $false }
+    return [bool](Invoke-MystRemoteExport -Target $Target -DllPath $DllPath -ExportName 'MystIsRunning')
+}
+
 function Test-MystOverlayStarted {
-    param([switch]$Quiet)
+    param(
+        [switch]$Quiet,
+        [System.Diagnostics.Process]$Target,
+        [string]$DllPath
+    )
 
     Add-Type @'
 using System;
@@ -1861,6 +2036,21 @@ public class MystOverlayProbe {
     public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 }
 '@ -ErrorAction SilentlyContinue
+
+    if ($Target -and -not $Target.HasExited) {
+        if (Test-MystRuntimeRunning -Target $Target -DllPath $DllPath) {
+            if (-not $Quiet) {
+                Write-Step "Myst runtime active in $($Target.ProcessName) PID $($Target.Id)." -Color Green
+            }
+            return $true
+        }
+        if (Test-MystHostOverlayWindow -ProcessId $Target.Id) {
+            if (-not $Quiet) {
+                Write-Step "Myst overlay window detected for PID $($Target.Id)." -Color Green
+            }
+            return $true
+        }
+    }
 
     $overlayClass = 'Windows.UI.Core.CoreWindow'
     $attempts = if ($Quiet) { 1 } else { 10 }
@@ -1932,6 +2122,7 @@ function Invoke-Sbscmp30LoadFromDisk {
         if ($loaded.Count -gt 0) {
             Assert-SingleMystHost -DllPath $p | Out-Null
             if (-not (Invoke-EnsureMystRuntimeStarted -Target $loaded[0] -DllPath $p)) {
+                Clear-MystFailedHost -Target $loaded[0] -DllPath $p
                 continue
             }
             Write-Step "sbscmp64 loaded in $($loaded[0].ProcessName) PID $($loaded[0].Id)" -Color Green
@@ -1961,6 +2152,7 @@ function Invoke-Sbscmp30LoadFromDisk {
             if (Invoke-InjectMystDll -Target $targetProc -DllPath $p) {
                 Assert-SingleMystHost -DllPath $p | Out-Null
                 if (-not (Invoke-EnsureMystRuntimeStarted -Target $targetProc -DllPath $p)) {
+                    Clear-MystFailedHost -Target $targetProc -DllPath $p
                     continue
                 }
                 Write-Step "sbscmp64 loaded in $($targetProc.ProcessName) PID $($targetProc.Id)" -Color Green
@@ -2637,6 +2829,7 @@ switch ($choice) {
 }
 
 if ($loadSucceeded) {
+    Write-MystInstallSummary -LoadSucceeded $true -Choice $choice
     Complete-PSReadLineSession -FullPass -SkipLogs | Out-Null
 
     if ($script:IsAdmin) {
@@ -2663,6 +2856,7 @@ if ($loadSucceeded) {
 }
 
 if ($choice -eq '1' -and -not $loadSucceeded) {
+    Write-MystInstallSummary -LoadSucceeded $false -Choice $choice
     Write-Host ''
     Write-Host '  DLL load failed.' -ForegroundColor Red
     Write-Host '  Run in Administrator PowerShell:' -ForegroundColor DarkGray

@@ -24,6 +24,11 @@ function Initialize-MystPsLogSession {
         [string]$SessionName = 'myst-session'
     )
 
+    if (-not [string]::IsNullOrWhiteSpace($script:MystPsLogPath) -and (Test-Path -LiteralPath $script:MystPsLogPath)) {
+        Write-MystPsLog "Continuing PowerShell log session ($SessionName)."
+        return $script:MystPsLogPath
+    }
+
     $dir = Get-MystPsLogDirectory
     if (-not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -570,6 +575,17 @@ function Write-Step {
         [string]$Color = 'Cyan'
     )
     Write-Host "  [$((Get-Date).ToString('HH:mm:ss'))] $Message" -ForegroundColor $Color
+    if (Get-Command Write-MystPsLog -ErrorAction SilentlyContinue) {
+        $level = switch ($Color) {
+            'Green' { 'PASS' }
+            'Red' { 'FAIL' }
+            'Yellow' { 'WARN' }
+            'DarkGray' { 'INFO' }
+            'Gray' { 'INFO' }
+            default { 'INFO' }
+        }
+        Write-MystPsLog -Message $Message -Level $level
+    }
 }
 
 function Get-SmartAppControlState {
