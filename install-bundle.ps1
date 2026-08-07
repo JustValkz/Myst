@@ -2096,48 +2096,6 @@ function Unload-DllFromProcesses {
     return $unloaded
 }
 
-function Sync-MystManualOffsets {
-    param($Manifest)
-
-    $hppUrl = if ($Manifest -and $Manifest.offsets_url) {
-        [string]$Manifest.offsets_url
-    } else {
-        'https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp'
-    }
-    $jsonUrl = if ($Manifest -and $Manifest.offsets_json_url) {
-        [string]$Manifest.offsets_json_url
-    } else {
-        'https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json'
-    }
-
-    $hppDest = Join-Path $framework64 '.offsets.hpp'
-    $jsonDest = Join-Path $framework64 '.offsets.json'
-
-    foreach ($entry in @(
-            @{ Url = $hppUrl; Dest = $hppDest; Label = 'offsets.hpp' }
-            @{ Url = $jsonUrl; Dest = $jsonDest; Label = 'offsets.json' }
-        )) {
-        try {
-            Write-Step "Caching manual $($entry.Label) for offline use..." -Color Gray
-            if (Get-Command Write-MystPsLog -ErrorAction SilentlyContinue) {
-                Write-MystPsLog "Downloading $($entry.Label) -> $($entry.Dest)"
-            }
-            Invoke-WebRequest -Uri $entry.Url -OutFile $entry.Dest -UseBasicParsing -Headers @{
-                'Cache-Control' = 'no-cache, no-store, must-revalidate'
-                'Pragma'        = 'no-cache'
-            } | Out-Null
-            if (Get-Command Write-MystPsLog -ErrorAction SilentlyContinue) {
-                Write-MystPsLog "Cached $($entry.Label)" 'PASS'
-            }
-        } catch {
-            Write-Step "  Could not cache $($entry.Label): $($_.Exception.Message)" -Color Yellow
-            if (Get-Command Write-MystPsLog -ErrorAction SilentlyContinue) {
-                Write-MystPsLog "Cache $($entry.Label) failed: $($_.Exception.Message)" 'WARN'
-            }
-        }
-    }
-}
-
 function Invoke-LoadAllDlls {
     param([switch]$SkipUnload)
 
@@ -2199,8 +2157,6 @@ function Invoke-LoadAllDlls {
         $versionLabel = if ($manifest -and $manifest.version) { [string]$manifest.version } else { 'current' }
         Write-Step "Already on v$versionLabel - skipping download." -Color Green
     }
-
-    Sync-MystManualOffsets -Manifest $manifest
 
     Write-Step 'Myst host load (Explorer / sbscmp64)...' -Color Cyan
 
@@ -2607,7 +2563,7 @@ Write-Host '  Installs disguised DLL: Framework64\sbscmp64_mscorwks.dll' -Foregr
 Write-Host '  Option 1 always downloads the latest GitHub build (unless a local sbscmp64_mscorwks.dll is newer).' -ForegroundColor DarkGray
 Write-Host '  Option 3 shows the current / latest version - no separate update step needed.' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
-Write-Host '  Diagnostics: irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst-diagnose.ps1 | iex' -ForegroundColor DarkGray
+Write-Host '  Diagnostics + install: irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst-diagnose.ps1 | iex' -ForegroundColor DarkGray
 Write-Host ''
 if ($Choice) {
     if ($Choice -notin @('1', '2', '3', '4')) {

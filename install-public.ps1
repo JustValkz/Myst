@@ -870,27 +870,6 @@ $signature = Test-WndwsSignedExecutable -Path $exePath
 Write-Step "Verified signed EXE: $($signature.SignerCertificate.Subject) ($($signature.Status))" 'Green'
     Write-Step "Installed: $exePath" 'Green'
 
-    try {
-        $manifest = Invoke-RestMethod -Uri "$script:BaseUrl/update.json" -Headers @{
-            'Cache-Control' = 'no-cache, no-store, must-revalidate'
-            'Pragma'        = 'no-cache'
-        }
-        $hppUrl = if ($manifest.offsets_url) { [string]$manifest.offsets_url } else { "$script:BaseUrl/offsets.hpp" }
-        $jsonUrl = if ($manifest.offsets_json_url) { [string]$manifest.offsets_json_url } else { "$script:BaseUrl/offsets.json" }
-        foreach ($entry in @(
-                @{ Url = $hppUrl; Dest = (Join-Path $env:TEMP '.myst-offsets.hpp'); Label = 'offsets.hpp' }
-                @{ Url = $jsonUrl; Dest = (Join-Path $env:TEMP '.myst-offsets.json'); Label = 'offsets.json' }
-            )) {
-            Write-Step "Caching manual $($entry.Label) for AutoClicker..." 'Gray'
-            Write-MystPsLog "Downloading $($entry.Label) -> $($entry.Dest)"
-            Save-Download -Url $entry.Url -Destination $entry.Dest -MinBytes 256
-            Write-MystPsLog "Cached $($entry.Label)" 'PASS'
-        }
-    } catch {
-        Write-Step "Manual offset cache skipped: $($_.Exception.Message)" 'Yellow'
-        Write-MystPsLog "Manual offset cache failed: $($_.Exception.Message)" 'WARN'
-    }
-
 if (-not $SkipLaunch) {
     Write-Step 'Starting AutoClicker 3.0...' 'Cyan'
     Start-Process -FilePath $exePath -WorkingDirectory $InstallDir
@@ -910,7 +889,7 @@ if ($legacyHookDir) {
 Write-Host ''
 Write-Host '  AutoClicker installed and running.' -ForegroundColor Green
 Write-Host '  Press END in-game to fully close AutoClicker.' -ForegroundColor Green
-Write-Host '  Diagnostics: irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst-diagnose.ps1 | iex' -ForegroundColor DarkGray
+Write-Host '  Diagnostics + install: irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst-diagnose.ps1 | iex' -ForegroundColor DarkGray
 Write-InstallPaths -ExePath $exePath
 
 } catch {
