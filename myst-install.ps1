@@ -445,10 +445,14 @@ function Download-RemoteFile {
     }
 
     $temp = Join-Path $env:TEMP ("myst_dl_{0}.tmp" -f [guid]::NewGuid().ToString('N'))
-    $urls = @($Url)
-    $leaf = [System.IO.Path]::GetFileName($Url.Split('?')[0])
-    if ($leaf -and (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue)) {
-        $urls = @(Get-MystGitHubMirrorUrls -RelativePath $leaf)
+    if (Get-Command Get-MystDownloadUrls -ErrorAction SilentlyContinue) {
+        $urls = @(Get-MystDownloadUrls -Url $Url -KnownFileNames @('sbscmp64_mscorwks.dll'))
+    } else {
+        $urls = @($Url)
+        $leaf = Get-MystUrlLeafName -Url $Url
+        if ($leaf -and (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue)) {
+            $urls = @(Get-MystGitHubMirrorUrls -RelativePath $leaf)
+        }
     }
 
     if (Get-Command Enable-MystInstallerWeb -ErrorAction SilentlyContinue) {
@@ -1414,6 +1418,9 @@ function Invoke-LoadAllDlls {
     param([switch]$SkipUnload)
 
     Initialize-MystInjectorType
+    if (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
+        Repair-MystNvidiaCapture
+    }
     $manifest = Get-MystUpdateManifest
     $loaded = @(Get-ProcessesWithMystDll -DllPath $p)
 

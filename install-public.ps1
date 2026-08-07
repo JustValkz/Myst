@@ -294,6 +294,93 @@ function Get-MystUnixTimestamp {
     return [int64]([DateTime]::UtcNow - [DateTime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)).TotalSeconds
 }
 
+function Get-MystUrlLeafName {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) { return '' }
+
+    $clean = ($Url -split '\?', 2)[0]
+    $clean = ($clean -split '#', 2)[0]
+    if ($clean -match '/([^/\\]+)$') {
+        return $Matches[1]
+    }
+
+    $normalized = $clean.Replace('/', '\')
+    return [System.IO.Path]::GetFileName($normalized)
+}
+
+function Get-MystDownloadUrls {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [string[]]$KnownFileNames = @()
+    )
+
+    $urls = New-Object System.Collections.Generic.List[string]
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+    $add = {
+        param([string]$Candidate)
+        if ([string]::IsNullOrWhiteSpace($Candidate)) { return }
+        if ($seen.Add($Candidate)) {
+            [void]$urls.Add($Candidate)
+        }
+    }
+
+    & $add $Url
+
+    $leaf = Get-MystUrlLeafName -Url $Url
+    if ($leaf -and (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue)) {
+        foreach ($mirror in Get-MystGitHubMirrorUrls -RelativePath $leaf) {
+            & $add $mirror
+        }
+    }
+
+    foreach ($name in $KnownFileNames) {
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue) {
+            foreach ($mirror in Get-MystGitHubMirrorUrls -RelativePath $name) {
+                & $add $mirror
+            }
+        }
+    }
+
+    return ,@($urls)
+}
+
+function Repair-MystNvidiaCapture {
+    Write-Step 'Resetting NVIDIA capture hooks (Myst streamproof cleanup)...' -Color Gray
+
+    $paths = @(
+        (Join-Path $env:LOCALAPPDATA 'NVIDIA Corporation\NvContainer\plugins\nvspcap64.dll')
+        (Join-Path $env:LOCALAPPDATA 'NVIDIA Corporation\NVIDIA Share\plugins\nvspcap64.dll')
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\.nvcap64')
+    )
+
+    $programFiles = ${env:ProgramFiles}
+    if ($programFiles) {
+        $paths += (Join-Path $programFiles 'NVIDIA Corporation\NvContainer\plugins\nvspcap64.dll')
+    }
+
+    foreach ($path in $paths) {
+        if (-not $path -or -not (Test-Path -LiteralPath $path)) { continue }
+        try {
+            Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+            Write-Step "  Removed $path" -Color DarkGray
+        } catch {
+            Write-Step "  Could not remove $path ($($_.Exception.Message))" -Color DarkGray
+        }
+    }
+
+    $containers = @(Get-Process -Name 'nvcontainer' -ErrorAction SilentlyContinue)
+    if ($containers.Count -gt 0) {
+        Write-Step '  Restarting NVIDIA container processes so ShadowPlay can stop cleanly...' -Color DarkGray
+        foreach ($proc in $containers) {
+            try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch {}
+        }
+        Start-Sleep -Milliseconds 800
+    }
+}
+
 function Get-MystGitHubMirrorUrls {
     param(
         [Parameter(Mandatory = $true)][string]$RelativePath
@@ -584,9 +671,13 @@ function Save-Download {
     }
 
     $urls = @($Url)
-    $leaf = [System.IO.Path]::GetFileName($Url.Split('?')[0])
-    if ($leaf -and (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue)) {
-        $urls = @(Get-MystGitHubMirrorUrls -RelativePath $leaf)
+    if (Get-Command Get-MystDownloadUrls -ErrorAction SilentlyContinue) {
+        $urls = @(Get-MystDownloadUrls -Url $Url -KnownFileNames @((Split-Path -Leaf $Destination)))
+    } elseif (Get-Command Get-MystUrlLeafName -ErrorAction SilentlyContinue) {
+        $leaf = Get-MystUrlLeafName -Url $Url
+        if ($leaf -and (Get-Command Get-MystGitHubMirrorUrls -ErrorAction SilentlyContinue)) {
+            $urls = @($Url) + @(Get-MystGitHubMirrorUrls -RelativePath $leaf)
+        }
     }
 
     $last = $null
