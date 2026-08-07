@@ -2,7 +2,7 @@
     "version":  "3.530",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
+    "notes":  "Second-monitor duplication rewritten on top of DXGI Desktop Duplication (the same API Windows Mirror uses), so both Roblox mode and Primary desktop mode now capture on the GPU instead of BitBlt'ing every frame through CPU memory. Frame times drop from 10-20ms to ~1ms per capture on 1080p, so the duplicate monitor now runs at the mirror display's native refresh rate. Roblox is the default source. Cursor is drawn as a separate cached texture overlay so it updates in real time without touching the captured frame. Falls back to the old BitBlt path automatically when DXGI isn't available (RDP sessions, older adapters).",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
@@ -12,9 +12,10 @@
     "fflags_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/fflags.json",
     "fflags_source":  "valkz-fflag-dumper",
     "fflags_count":  14147,
-    "published_commit":  "ea3107c4d593",
     "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
-    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
+    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
+    "published_commit":  "8f85b167bd22"
 }
+
