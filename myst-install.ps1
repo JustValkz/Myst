@@ -1157,6 +1157,110 @@ function Get-ProcessesWithMystDll {
     return @($found.Values | Sort-Object Id)
 }
 
+function Get-AllMystHostProcesses {
+    param([string]$DllPath)
+
+    $found = @{}
+    foreach ($proc in @(Get-ProcessesWithMystDll -DllPath $DllPath)) {
+        $found[$proc.Id] = $proc
+    }
+
+    if ([string]::IsNullOrWhiteSpace($DllPath)) {
+        return @($found.Values | Sort-Object Id)
+    }
+
+    $dllLeaf = Split-Path -Leaf $DllPath
+    foreach ($proc in @(Get-Process -ErrorAction SilentlyContinue)) {
+        if ($proc.Id -eq $PID) { continue }
+        if ($found.ContainsKey($proc.Id)) { continue }
+
+        if (Test-ProcessHasDllFast -ProcessId $proc.Id -DllPath $DllPath) {
+            $found[$proc.Id] = $proc
+            continue
+        }
+
+        try {
+            foreach ($mod in $proc.Modules) {
+                if ($mod.ModuleName -ieq $dllLeaf -or (Test-DllPathMatch $mod.FileName $DllPath)) {
+                    $found[$proc.Id] = $proc
+                    break
+                }
+            }
+        } catch {}
+    }
+
+    return @($found.Values | Sort-Object Id)
+}
+
+function Invoke-MystFullTeardown {
+    param(
+        [string]$DllPath = $p,
+        [switch]$DeleteDll
+    )
+
+    Initialize-MystInjectorType
+
+    Write-Host ''
+    Write-Step 'Full Myst teardown (all hosts, all DLL copies)...' -Color Cyan
+
+    if (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
+        Repair-MystNvidiaCapture
+    }
+
+    $hosts = @(Get-AllMystHostProcesses -DllPath $DllPath)
+    if ($hosts.Count -gt 0) {
+        Write-Step "Found $($hosts.Count) Myst host process(es)." -Color Gray
+        foreach ($proc in $hosts) {
+            if ($proc.Id -eq $PID) { continue }
+            Invoke-MystRequestUnloadExport -Target $proc -DllPath $DllPath | Out-Null
+            Invoke-MystRequestStopExport -Target $proc -DllPath $DllPath | Out-Null
+        }
+        Start-Sleep -Milliseconds 400
+        Clear-AllMystDllHosts -DllPath $DllPath | Out-Null
+        Start-Sleep -Milliseconds 300
+    }
+
+    $remaining = @(Get-AllMystHostProcesses -DllPath $DllPath)
+    foreach ($proc in $remaining) {
+        if ($proc.Id -eq $PID) { continue }
+        Write-Step "Force-stopping stuck Myst host $($proc.ProcessName) PID $($proc.Id)..." -Color Yellow
+        try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch {}
+    }
+    if ($remaining.Count -gt 0) {
+        Start-Sleep -Milliseconds 500
+    }
+
+    Clear-AllRuntimeBrokerDll -DllPath $DllPath | Out-Null
+
+    if ($DeleteDll) {
+        $artifactPaths = @(
+            $DllPath
+            "$DllPath.old"
+            (Join-Path $framework64 'AutoClickerHost.dll')
+            (Join-Path $framework64 'Myst.dll')
+            (Join-Path $framework64 'sbscmp64_mscorwks.dll.old')
+        )
+        foreach ($artifact in $artifactPaths) {
+            if ([string]::IsNullOrWhiteSpace($artifact)) { continue }
+            if (-not (Test-Path -LiteralPath $artifact)) { continue }
+            Write-Step "Removing $artifact" -Color Gray
+            Remove-MystInstalledDll -Path $artifact -Quiet | Out-Null
+            if (Test-Path -LiteralPath $artifact) {
+                try { Remove-Item -LiteralPath $artifact -Force -ErrorAction Stop } catch {}
+            }
+        }
+    }
+
+    $leftover = @(Get-AllMystHostProcesses -DllPath $DllPath)
+    if ($leftover.Count -gt 0) {
+        Write-Step "Warning: $($leftover.Count) host(s) still have Myst loaded." -Color Yellow
+        return $false
+    }
+
+    Write-Step 'Myst fully unloaded.' -Color Green
+    return $true
+}
+
 function Stop-MystDisposableHost {
     param(
         [System.Diagnostics.Process]$Process,
@@ -1981,25 +2085,7 @@ function Invoke-Sbscmp30LoadFromDisk {
 }
 
 function Invoke-Sbscmp30Unload {
-    $withDll = @(Get-ProcessesWithMystDll -DllPath $p)
-    if (-not $withDll) {
-        Write-Host "`n  sbscmp64 Already Unloaded" -ForegroundColor Yellow
-        return $true
-    }
-
-    foreach ($proc in $withDll) {
-        Invoke-MystRequestUnloadExport -Target $proc -DllPath $p | Out-Null
-        Invoke-MystRequestStopExport -Target $proc -DllPath $p | Out-Null
-    }
-    Start-Sleep -Milliseconds 400
-
-    $ok = Clear-AllMystDllHosts -DllPath $p
-    if ($ok) {
-        Write-Host "`n  sbscmp64 Unloaded" -ForegroundColor Green
-    } else {
-        Write-Host "`n  Unable to unload sbscmp64 from all RuntimeBroker instances" -ForegroundColor Red
-    }
-    return $ok
+    return Invoke-MystFullTeardown -DllPath $p -DeleteDll
 }
 
 function Inject-DllIntoProcesses {
@@ -2097,11 +2183,18 @@ function Invoke-LoadAllDlls {
     )
 
     Initialize-MystInjectorType
+
+    # Option 1 always starts clean: kill every old host and remove on-disk DLL.
+    if (-not $SkipUnload) {
+        Invoke-MystFullTeardown -DllPath $p -DeleteDll | Out-Null
+        Start-Sleep -Milliseconds 400
+    }
+
     if (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
         Repair-MystNvidiaCapture
     }
     $manifest = Get-MystUpdateManifest
-    $loaded = @(Get-ProcessesWithMystDll -DllPath $p)
+    $loaded = @(Get-AllMystHostProcesses -DllPath $p)
 
     if (-not $ForceRefresh -and $loaded.Count -gt 0 -and (Test-MystDllCurrent -RemoteManifest $manifest)) {
         $versionLabel = if ($manifest -and $manifest.version) { [string]$manifest.version } else { 'current' }
@@ -2125,12 +2218,12 @@ function Invoke-LoadAllDlls {
     if ($ForceRefresh -or (-not $SkipUnload -and $loaded.Count -gt 0)) {
         Write-Host ''
         Write-Step 'Unloading existing Myst...' -Color Cyan
-        Invoke-Sbscmp30Unload | Out-Null
+        Invoke-MystFullTeardown -DllPath $p -DeleteDll | Out-Null
         Start-Sleep -Milliseconds 300
         $loaded = @()
     }
 
-    if ($ForceRefresh -and (Test-Path -LiteralPath $p)) {
+    if (($ForceRefresh -or -not $SkipUnload) -and (Test-Path -LiteralPath $p)) {
         Write-Step 'Removing old sbscmp64_mscorwks.dll...' -Color Cyan
         if (-not (Remove-MystInstalledDll -Path $p)) {
             Write-Host ''
@@ -2180,10 +2273,15 @@ function Invoke-LoadAllDlls {
 }
 
 function Invoke-UnloadAllDlls {
-    Invoke-Sbscmp30Unload | Out-Null
+    $ok = Invoke-MystFullTeardown -DllPath $p -DeleteDll
+    if ($ok) {
+        Write-Host "`n  sbscmp64 Unloaded and deleted" -ForegroundColor Green
+    } else {
+        Write-Host "`n  Unable to unload all Myst hosts - try Admin PowerShell" -ForegroundColor Red
+    }
 
     if (-not (Get-Process -Name $n -ErrorAction SilentlyContinue)) {
-        Write-Host "`n  RuntimeBroker Doesn't Exist" -ForegroundColor Red
+        Write-Host "  RuntimeBroker Doesn't Exist" -ForegroundColor DarkGray
     }
 }
 
