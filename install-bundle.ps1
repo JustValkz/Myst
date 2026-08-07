@@ -387,8 +387,8 @@ function Get-MystGitHubMirrorUrls {
     $relative = $RelativePath.TrimStart('/')
     $stamp = Get-MystUnixTimestamp
     return @(
-        "https://raw.githubusercontent.com/JustValkz/Myst/main/$relative?t=$stamp"
-        "https://cdn.jsdelivr.net/gh/JustValkz/Myst@main/$relative?t=$stamp"
+        "https://raw.githubusercontent.com/JustValkz/Myst/main/${relative}?t=$stamp"
+        "https://cdn.jsdelivr.net/gh/JustValkz/Myst@main/${relative}?t=$stamp"
     )
 }
 
