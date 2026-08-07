@@ -342,7 +342,7 @@ function Get-MystDownloadUrls {
         }
     }
 
-    return ,@($urls)
+    return @($urls.ToArray())
 }
 
 function Repair-MystNvidiaCapture {

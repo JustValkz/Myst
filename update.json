@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.465",
+    "version":  "3.466",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Fix installer DLL download URLs (mirror + filename parsing) and reset stuck NVIDIA capture before load",
+    "notes":  "Fix installer DLL download (URL list + mirror parsing) and reset stuck NVIDIA capture before load",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
