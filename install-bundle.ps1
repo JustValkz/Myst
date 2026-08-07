@@ -1786,13 +1786,13 @@ public class MystHostLoader {
     }
 }
 "@
-if (-not [MystHostLoader]::Run('{0}')) {
+if (-not [MystHostLoader]::Run('__MYST_DLL_PATH__')) {
     [Console]::Error.WriteLine([MystHostLoader]::LastError)
     exit 1
 }
 while ($true) { Start-Sleep -Seconds 3600 }
 '@
-    $hostScript = $hostScriptTemplate -f $escapedPath
+    $hostScript = $hostScriptTemplate.Replace('__MYST_DLL_PATH__', $escapedPath)
 
     Set-Content -LiteralPath $hostScriptPath -Value $hostScript -Encoding UTF8 -Force
 
