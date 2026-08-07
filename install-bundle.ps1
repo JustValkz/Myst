@@ -502,17 +502,7 @@ function Repair-MystWindowsDisplay {
         }
     }
 
-    foreach ($name in @('SystemSettings')) {
-        $procs = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
-        foreach ($proc in $procs) {
-            try {
-                Stop-Process -Id $proc.Id -Force -ErrorAction Stop
-                Write-Step "  Stopped $name PID $($proc.Id)" -Color DarkGray
-            } catch {}
-        }
-    }
-
-    Start-Sleep -Milliseconds 400
+    Write-Step '  Display hook files cleared — Myst redeploys on next load.' -Color DarkGray
 }
 
 function Repair-MystAllHooks {
