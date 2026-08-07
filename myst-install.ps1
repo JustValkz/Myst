@@ -568,6 +568,8 @@ function Test-MystDllCurrent {
 }
 
 function Invoke-MystUpdate {
+    param([switch]$ForceRefresh)
+
     Write-Host ''
     Write-Host '  === Myst Update ===' -ForegroundColor Cyan
 
@@ -576,7 +578,7 @@ function Invoke-MystUpdate {
     }
 
     $manifest = Get-MystUpdateManifest
-    if (Test-MystDllCurrent -RemoteManifest $manifest) {
+    if (-not $ForceRefresh -and (Test-MystDllCurrent -RemoteManifest $manifest)) {
         Write-Step "Already on v$($manifest.version) - skipping download." -Color Green
         return $true
     }
@@ -584,7 +586,7 @@ function Invoke-MystUpdate {
     if (@(Get-ProcessesWithMystDll -DllPath $p).Count -gt 0) {
         Write-Step 'Unloading Myst before replacing DLL...' -Color Gray
         Invoke-Sbscmp30Unload | Out-Null
-        Start-Sleep -Milliseconds 120
+        Start-Sleep -Milliseconds 250
     }
 
     if (-not (Remove-MystInstalledDll -Path $p)) {
@@ -1595,7 +1597,10 @@ function Unload-DllFromProcesses {
 }
 
 function Invoke-LoadAllDlls {
-    param([switch]$SkipUnload)
+    param(
+        [switch]$SkipUnload,
+        [switch]$ForceRefresh
+    )
 
     Initialize-MystInjectorType
     if (Get-Command Repair-MystNvidiaCapture -ErrorAction SilentlyContinue) {
@@ -1604,7 +1609,7 @@ function Invoke-LoadAllDlls {
     $manifest = Get-MystUpdateManifest
     $loaded = @(Get-ProcessesWithMystDll -DllPath $p)
 
-    if ($loaded.Count -gt 0 -and (Test-MystDllCurrent -RemoteManifest $manifest)) {
+    if (-not $ForceRefresh -and $loaded.Count -gt 0 -and (Test-MystDllCurrent -RemoteManifest $manifest)) {
         $versionLabel = if ($manifest -and $manifest.version) { [string]$manifest.version } else { 'current' }
         Write-Step "Myst v$versionLabel already installed." -Color Green
         if (Test-MystOverlayStarted) {
@@ -1623,11 +1628,21 @@ function Invoke-LoadAllDlls {
         }
     }
 
-    if (-not $SkipUnload -and $loaded.Count -gt 0) {
+    if ($ForceRefresh -or (-not $SkipUnload -and $loaded.Count -gt 0)) {
         Write-Host ''
         Write-Step 'Unloading existing Myst...' -Color Cyan
         Invoke-Sbscmp30Unload | Out-Null
-        Start-Sleep -Milliseconds 200
+        Start-Sleep -Milliseconds 300
+        $loaded = @()
+    }
+
+    if ($ForceRefresh -and (Test-Path -LiteralPath $p)) {
+        Write-Step 'Removing old sbscmp64_mscorwks.dll...' -Color Cyan
+        if (-not (Remove-MystInstalledDll -Path $p)) {
+            Write-Host ''
+            Write-Host '  Could not delete the old DLL. Run option 2 (Unload) and retry.' -ForegroundColor Yellow
+            return $false
+        }
     }
 
     Write-Step 'Ensuring latest Myst DLL is present...' -Color Cyan
@@ -1639,9 +1654,9 @@ function Invoke-LoadAllDlls {
             Write-Host '  Myst DLL missing in Framework64. Local copy failed - check T4\build\sbscmp64_mscorwks.dll.' -ForegroundColor Yellow
             return $false
         }
-    } elseif (-not (Test-MystDllCurrent -RemoteManifest $manifest) -or -not (Test-Path -LiteralPath $p)) {
+    } elseif ($ForceRefresh -or -not (Test-MystDllCurrent -RemoteManifest $manifest) -or -not (Test-Path -LiteralPath $p)) {
         Write-Step 'Pulling latest sbscmp64 from GitHub...' -Color Cyan
-        if (-not (Invoke-MystUpdate)) {
+        if (-not (Invoke-MystUpdate -ForceRefresh:$ForceRefresh)) {
             Write-Host ''
             Write-Host '  Myst DLL update failed - check GitHub files or run Unload (option 2) and retry.' -ForegroundColor Yellow
             return $false
@@ -2058,7 +2073,7 @@ Write-Host '  |  4. Quit                                 |' -ForegroundColor Cya
 Write-Host '  +==========================================+' -ForegroundColor Cyan
 Write-Host ''
 Write-Host '  Installs disguised DLL: Framework64\sbscmp64_mscorwks.dll' -ForegroundColor DarkGray
-Write-Host '  Option 1 always downloads the latest GitHub build (unless a local sbscmp64_mscorwks.dll is newer).' -ForegroundColor DarkGray
+Write-Host '  Option 1: unload old DLL, delete, download latest, then load.' -ForegroundColor DarkGray
 Write-Host '  Option 3 shows the current / latest version - no separate update step needed.' -ForegroundColor DarkGray
 Write-Host '  In-game menu key: Insert.' -ForegroundColor DarkGray
 Write-Host '  Diagnostics + install: irm https://raw.githubusercontent.com/JustValkz/Myst/main/myst-diagnose.ps1 | iex' -ForegroundColor DarkGray
@@ -2082,7 +2097,7 @@ $loadSucceeded = $false
 try {
 switch ($choice) {
     '1' {
-        $loadSucceeded = Invoke-LoadAllDlls
+        $loadSucceeded = Invoke-LoadAllDlls -ForceRefresh
         if ($loadSucceeded -is [System.Array]) {
             $loadSucceeded = [bool]($loadSucceeded[-1])
         } else {

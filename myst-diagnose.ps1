@@ -134,11 +134,14 @@ if ([string]::IsNullOrWhiteSpace($installScript)) {
     exit 1
 }
 
-Write-MystPsLog 'Launching latest Myst installer...'
+Write-MystPsLog 'Launching latest Myst installer (choice 1: full refresh)...'
+if ([string]::IsNullOrWhiteSpace($Choice)) {
+    $Choice = '1'
+}
 $exitCode = 0
 try {
     $installer = [scriptblock]::Create($installScript)
-    & $installer @PSBoundParameters
+    & $installer -WatchMode:$WatchMode -LoadOnly:$LoadOnly -SkipUnload:$SkipUnload -Choice $Choice
     if ($LASTEXITCODE) { $exitCode = [int]$LASTEXITCODE }
     Write-MystPsLog ("Installer finished with exit code $exitCode") $(if ($exitCode -eq 0) { 'PASS' } else { 'FAIL' })
 } catch {
