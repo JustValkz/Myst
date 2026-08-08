@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.533",
+    "version":  "3.537",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "NVIDIA recording stutter fixed. The polling loop no longer creates a CreateRemoteThread in already-hooked nvcontainer.exe hosts every 30s (that remote thread was what caused mid-recording hitches - NVIDIA's capture thread had to context-switch to service it every cycle). Hooked PIDs are now cached, so the polling tick costs one process snapshot + hash-set lookup unless a new nvcontainer.exe actually spawns. FTS + cursor registry writes only happen once per Myst session, not on every activation. Idle poll interval bumped 30s -> 60s. Also writes 'include cursor' hints to every documented NVIDIA registry location (HKCU ShadowPlay\\NVSPCAPS + HKLM NvContainer\\ShadowPlay) so the setting sticks regardless of whether the customer has NVIDIA App or legacy GeForce Experience installed.",
+    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
@@ -12,10 +12,9 @@
     "fflags_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/fflags.json",
     "fflags_source":  "valkz-fflag-dumper",
     "fflags_count":  14147,
+    "published_commit":  "b84a34b86590",
     "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
-    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
-    "published_commit":  "b84a34b86590"
+    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
 }
-
