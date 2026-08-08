@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.537",
+    "version":  "3.538",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "HOTFIX for v3.533: unconditionally cleans up the guessed 'include cursor' registry writes that broke NVIDIA App for some customers. Every Myst launch now deletes HKCU ShadowPlay\\NVSPCAPS\\CursorEnabled + DVRCursorEnabled and HKLM NvContainer\\ShadowPlay\\bDVRCursorEnabled + bCursorEnabled (and removes the subkey if empty), so anyone whose NVIDIA App won't open gets it back the next time Myst boots. Cursor visibility is now 100% controlled by the NVIDIA App preference as originally intended. Also: fixed second-monitor duplication crash on Alt+Tab out of fullscreen Roblox (DXGI_ERROR_ACCESS_LOST is properly released with a cooldown before reinit). Moved Config panel into the empty right-column slot in Settings so it stops hugging the bottom-left corner.",
+    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
@@ -12,10 +12,9 @@
     "fflags_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/fflags.json",
     "fflags_source":  "valkz-fflag-dumper",
     "fflags_count":  14147,
+    "published_commit":  "c6e9d82171d9",
     "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
-    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
-    "published_commit":  "c6e9d82171d9"
+    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
 }
-
