@@ -1118,6 +1118,15 @@ function Restart-RuntimeBrokerHost {
     Start-Sleep -Milliseconds 400
 }
 
+function Test-MystHostHasDllLoaded {
+    param([string]$DllPath)
+
+    if ([string]::IsNullOrWhiteSpace($DllPath)) { return $false }
+    if (-not (Test-Path -LiteralPath $DllPath)) { return $false }
+    if (-not (Get-Command Get-ProcessesWithMystDll -ErrorAction SilentlyContinue)) { return $false }
+    return (@(Get-ProcessesWithMystDll -DllPath $DllPath)).Count -gt 0
+}
+
 function Get-ProcessesWithMystDll {
     param([string]$DllPath)
 
@@ -2642,8 +2651,17 @@ if ($loadSucceeded) {
     }
 
     Write-Host ''
+    if (-not (Test-MystHostHasDllLoaded -DllPath $p)) {
+        Write-Host '  Load reported success but the DLL is not mapped in any host process.' -ForegroundColor Red
+        Write-Host '  Check the log above for injection errors. This window stays open.' -ForegroundColor DarkGray
+        if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+            Wait-MystInstallPause -Failed -ExitCode 1
+        }
+        exit 1
+    }
+
     Write-Host '  Myst is loaded - press Insert in-game to open the menu.' -ForegroundColor Green
-    Write-Host '  You can close this PowerShell window; Myst runs in RuntimeBroker/explorer.' -ForegroundColor DarkGray
+    Write-Host '  Myst runs in RuntimeBroker/explorer after this window closes.' -ForegroundColor DarkGray
 
     if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
         Wait-MystInstallPause -Success

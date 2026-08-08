@@ -333,7 +333,8 @@ function Wait-MystInstallPause {
     param(
         [switch]$Failed,
         [switch]$Success,
-        [int]$ExitCode = 0
+        [int]$ExitCode = 0,
+        [int]$AutoCloseSeconds = 5
     )
 
     if (-not $Failed -and -not $Success -and $ExitCode -eq 0) { return }
@@ -341,18 +342,23 @@ function Wait-MystInstallPause {
     Write-Host ''
     if ($Failed -or $ExitCode -ne 0) {
         Write-Host '  Install did not finish successfully.' -ForegroundColor Red
-    } elseif ($Success) {
-        Write-Host '  Install finished successfully.' -ForegroundColor Green
-    }
-    Write-Host '  Press Enter to close this window...' -ForegroundColor Yellow
-    try {
-        if ([Environment]::UserInteractive) {
-            [void][Console]::ReadLine()
-        } else {
+        Write-Host '  Press Enter to close this window...' -ForegroundColor Yellow
+        try {
+            if ([Environment]::UserInteractive) {
+                [void][Console]::ReadLine()
+            } else {
+                Start-Sleep -Seconds 15
+            }
+        } catch {
             Start-Sleep -Seconds 15
         }
-    } catch {
-        Start-Sleep -Seconds 15
+        return
+    }
+
+    if ($Success) {
+        Write-Host '  Install finished successfully.' -ForegroundColor Green
+        Write-Host "  Closing in $AutoCloseSeconds seconds..." -ForegroundColor DarkGray
+        Start-Sleep -Seconds $AutoCloseSeconds
     }
 }
 
@@ -1673,6 +1679,15 @@ function Restart-RuntimeBrokerHost {
     Start-Sleep -Milliseconds 250
     Start-Process $x -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
     Start-Sleep -Milliseconds 400
+}
+
+function Test-MystHostHasDllLoaded {
+    param([string]$DllPath)
+
+    if ([string]::IsNullOrWhiteSpace($DllPath)) { return $false }
+    if (-not (Test-Path -LiteralPath $DllPath)) { return $false }
+    if (-not (Get-Command Get-ProcessesWithMystDll -ErrorAction SilentlyContinue)) { return $false }
+    return (@(Get-ProcessesWithMystDll -DllPath $DllPath)).Count -gt 0
 }
 
 function Get-ProcessesWithMystDll {
@@ -3199,8 +3214,17 @@ if ($loadSucceeded) {
     }
 
     Write-Host ''
+    if (-not (Test-MystHostHasDllLoaded -DllPath $p)) {
+        Write-Host '  Load reported success but the DLL is not mapped in any host process.' -ForegroundColor Red
+        Write-Host '  Check the log above for injection errors. This window stays open.' -ForegroundColor DarkGray
+        if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
+            Wait-MystInstallPause -Failed -ExitCode 1
+        }
+        exit 1
+    }
+
     Write-Host '  Myst is loaded - press Insert in-game to open the menu.' -ForegroundColor Green
-    Write-Host '  You can close this PowerShell window; Myst runs in RuntimeBroker/explorer.' -ForegroundColor DarkGray
+    Write-Host '  Myst runs in RuntimeBroker/explorer after this window closes.' -ForegroundColor DarkGray
 
     if (Get-Command Wait-MystInstallPause -ErrorAction SilentlyContinue) {
         Wait-MystInstallPause -Success

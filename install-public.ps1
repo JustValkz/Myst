@@ -335,7 +335,8 @@ function Wait-MystInstallPause {
     param(
         [switch]$Failed,
         [switch]$Success,
-        [int]$ExitCode = 0
+        [int]$ExitCode = 0,
+        [int]$AutoCloseSeconds = 5
     )
 
     if (-not $Failed -and -not $Success -and $ExitCode -eq 0) { return }
@@ -343,18 +344,23 @@ function Wait-MystInstallPause {
     Write-Host ''
     if ($Failed -or $ExitCode -ne 0) {
         Write-Host '  Install did not finish successfully.' -ForegroundColor Red
-    } elseif ($Success) {
-        Write-Host '  Install finished successfully.' -ForegroundColor Green
-    }
-    Write-Host '  Press Enter to close this window...' -ForegroundColor Yellow
-    try {
-        if ([Environment]::UserInteractive) {
-            [void][Console]::ReadLine()
-        } else {
+        Write-Host '  Press Enter to close this window...' -ForegroundColor Yellow
+        try {
+            if ([Environment]::UserInteractive) {
+                [void][Console]::ReadLine()
+            } else {
+                Start-Sleep -Seconds 15
+            }
+        } catch {
             Start-Sleep -Seconds 15
         }
-    } catch {
-        Start-Sleep -Seconds 15
+        return
+    }
+
+    if ($Success) {
+        Write-Host '  Install finished successfully.' -ForegroundColor Green
+        Write-Host "  Closing in $AutoCloseSeconds seconds..." -ForegroundColor DarkGray
+        Start-Sleep -Seconds $AutoCloseSeconds
     }
 }
 
