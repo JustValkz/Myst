@@ -2,7 +2,7 @@
     "version":  "3.544",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "v3.544: Silent aim delayed crash fix — removed background viewport thread (writes only while firing), restore original Camera::Viewport, raycast/magic hooks install only during LMB hold, block wrong FindPartOnRay descriptor.",
+    "notes":  "v3.544: Silent aim crash fix + installer NVIDIA hook reset — stops nvcontainer/services before cleanup, takeown/icacls for ProgramData, no access-denied spam.",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
@@ -15,7 +15,4 @@
     "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
-    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
-    "published_commit":  "61e59f0aacc8"
-}
-
+    "public_exe_url":

@@ -453,11 +453,169 @@ function Expand-MystDownloadUrlList {
     return @($flat.ToArray())
 }
 
+function Test-MystPathLocked {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    try {
+        $stream = [System.IO.File]::Open($Path, 'Open', 'ReadWrite', 'None')
+        $stream.Close()
+        return $false
+    } catch {
+        return $true
+    }
+}
+
+function Wait-MystProcessExit {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [int]$TimeoutSeconds = 10
+    )
+
+    $deadline = (Get-Date).AddSeconds([Math]::Max(1, $TimeoutSeconds))
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Get-Process -Name $Name -ErrorAction SilentlyContinue)) { return $true }
+        Start-Sleep -Milliseconds 200
+    }
+    return -not (Get-Process -Name $Name -ErrorAction SilentlyContinue)
+}
+
+function Grant-MystPathOwnership {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return }
+
+    $isAdmin = $false
+    try {
+        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+            [Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {}
+    if (-not $isAdmin) { return }
+
+    try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        $item.Attributes = 'Normal'
+    } catch {}
+
+    $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    foreach ($target in @($Path, (Split-Path -Parent $Path))) {
+        if (-not $target -or -not (Test-Path -LiteralPath $target)) { continue }
+        try { & takeown.exe /F $target /A 2>$null | Out-Null } catch {}
+        try { & icacls.exe $target /inheritance:e /C 2>$null | Out-Null } catch {}
+        try { & icacls.exe $target /grant "${user}:(F)" /C 2>$null | Out-Null } catch {}
+        try { & icacls.exe $target /grant 'Administrators:(F)' /C 2>$null | Out-Null } catch {}
+        try { & icacls.exe $target /grant 'SYSTEM:(F)' /C 2>$null | Out-Null } catch {}
+    }
+}
+
+function Stop-MystServiceIfPresent {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if (-not $svc -or $svc.Status -eq 'Stopped') { return }
+
+    try {
+        Stop-Service -Name $Name -Force -ErrorAction Stop
+        return
+    } catch {}
+
+    try {
+        $controller = [System.ServiceProcess.ServiceController]::new($Name)
+        if ($controller.Status -ne 'Stopped') {
+            $controller.Stop()
+            $controller.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(12))
+        }
+    } catch {}
+}
+
+function Start-MystServiceIfPresent {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if (-not $svc -or $svc.Status -eq 'Running') { return }
+
+    try {
+        Start-Service -Name $Name -ErrorAction Stop
+    } catch {}
+}
+
+function Stop-MystNvidiaCaptureHosts {
+    foreach ($procName in @('nvcontainer', 'NVIDIA Share', 'nvsphelper64', 'NVIDIA Overlay')) {
+        Get-Process -Name $procName -ErrorAction SilentlyContinue | ForEach-Object {
+            try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {}
+        }
+    }
+    Wait-MystProcessExit -Name 'nvcontainer' -TimeoutSeconds 10 | Out-Null
+    Start-Sleep -Milliseconds 250
+}
+
+function Stop-MystNvidiaServices {
+    foreach ($svcName in @('NvContainerLocalSystem', 'NVDisplay.ContainerLocalSystem', 'NvContainerNetworkService')) {
+        Stop-MystServiceIfPresent -Name $svcName
+    }
+    Start-Sleep -Milliseconds 350
+}
+
+function Start-MystNvidiaServices {
+    foreach ($svcName in @('NVDisplay.ContainerLocalSystem', 'NvContainerLocalSystem', 'NvContainerNetworkService')) {
+        Start-MystServiceIfPresent -Name $svcName
+    }
+    Start-Sleep -Milliseconds 500
+}
+
+function Remove-MystLockedPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [switch]$Quiet
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $true }
+    if (-not (Test-Path -LiteralPath $Path)) { return $true }
+
+    Grant-MystPathOwnership -Path $Path
+
+    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+        if (-not (Test-Path -LiteralPath $Path)) { return $true }
+
+        if (-not (Test-MystPathLocked -Path $Path)) {
+            try {
+                Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+                if (-not (Test-Path -LiteralPath $Path)) { return $true }
+            } catch {}
+        }
+
+        $side = "$Path.myst_old"
+        try {
+            if (Test-Path -LiteralPath $side) {
+                Remove-MystLockedPath -Path $side -Quiet | Out-Null
+            }
+            Rename-Item -LiteralPath $Path -NewName (Split-Path -Leaf $side) -Force -ErrorAction Stop
+            if (-not (Test-Path -LiteralPath $Path)) {
+                Remove-MystLockedPath -Path $side -Quiet | Out-Null
+                return $true
+            }
+        } catch {}
+
+        Start-Sleep -Milliseconds (120 + (80 * $attempt))
+    }
+
+    if (Test-Path -LiteralPath $Path) {
+        try { cmd.exe /c "del /f /q `"$Path`"" 2>$null | Out-Null } catch {}
+    }
+
+    return -not (Test-Path -LiteralPath $Path)
+}
+
 function Repair-MystNvidiaCapture {
     Write-Step 'Resetting NVIDIA capture hooks (Myst streamproof cleanup)...' -Color Gray
 
+    Stop-MystNvidiaCaptureHosts
+    Stop-MystNvidiaServices
+
     $paths = @(
         (Join-Path $env:ProgramData 'NVIDIA Corporation\NvSpAssist\nvsp_capture_helper.dll')
+        (Join-Path $env:ProgramData 'NVIDIA Corporation\NvSpAssist\nvsp_capture_helper.dll.myst_old')
         (Join-Path $env:LOCALAPPDATA 'NVIDIA Corporation\NvContainer\plugins\nvspcap64.dll')
         (Join-Path $env:LOCALAPPDATA 'NVIDIA Corporation\NVIDIA Share\plugins\nvspcap64.dll')
         (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ShellExperienceHost\.nvcap64')
@@ -468,28 +626,32 @@ function Repair-MystNvidiaCapture {
         $paths += (Join-Path $programFiles 'NVIDIA Corporation\NvContainer\plugins\nvspcap64.dll')
     }
 
+    $pending = New-Object System.Collections.Generic.List[string]
     foreach ($path in $paths) {
         if (-not $path -or -not (Test-Path -LiteralPath $path)) { continue }
-        try {
-            Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+        if (Remove-MystLockedPath -Path $path -Quiet) {
             Write-Step "  Removed $path" -Color DarkGray
-        } catch {
-            Write-Step "  Could not remove $path ($($_.Exception.Message))" -Color DarkGray
+        } else {
+            [void]$pending.Add($path)
         }
     }
 
-    foreach ($svcName in @('NvContainerLocalSystem', 'NVDisplay.ContainerLocalSystem')) {
-        $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
-        if (-not $svc) { continue }
-        try {
-            Restart-Service -Name $svcName -Force -ErrorAction Stop
-            Write-Step "  Restarted $svcName" -Color DarkGray
-        } catch {
-            Write-Step "  Could not restart $svcName ($($_.Exception.Message))" -Color DarkGray
+    Start-MystNvidiaServices
+
+    if ($pending.Count -gt 0) {
+        Start-Sleep -Milliseconds 700
+        Stop-MystNvidiaCaptureHosts
+        Stop-MystNvidiaServices
+        foreach ($path in @($pending.ToArray())) {
+            if (-not (Test-Path -LiteralPath $path)) { continue }
+            if (Remove-MystLockedPath -Path $path -Quiet) {
+                Write-Step "  Removed $path" -Color DarkGray
+            }
         }
+        Start-MystNvidiaServices
     }
 
-    Write-Step '  NVIDIA hooks cleared â€” ShadowPlay should record again. Myst redeploys mirror hook only on next load.' -Color DarkGray
+    Write-Step '  NVIDIA hooks reset â€” Myst redeploys streamproof on next load.' -Color DarkGray
 }
 
 function Repair-MystWindowsDisplay {
@@ -502,11 +664,8 @@ function Repair-MystWindowsDisplay {
 
     foreach ($path in $paths) {
         if (-not $path -or -not (Test-Path -LiteralPath $path)) { continue }
-        try {
-            Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+        if (Remove-MystLockedPath -Path $path -Quiet) {
             Write-Step "  Removed $path" -Color DarkGray
-        } catch {
-            Write-Step "  Could not remove $path ($($_.Exception.Message))" -Color DarkGray
         }
     }
 
