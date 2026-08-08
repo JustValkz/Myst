@@ -1262,6 +1262,8 @@ function Invoke-MystFullTeardown {
         }
     }
 
+    Clear-MystInstallerSideLoad -DllPath $DllPath | Out-Null
+
     $leftover = @(Get-AllMystHostProcesses -DllPath $DllPath)
     if ($leftover.Count -gt 0) {
         Write-Step "Warning: $($leftover.Count) host(s) still have Myst loaded." -Color Yellow
@@ -1926,6 +1928,7 @@ function Invoke-Sbscmp30LoadFromDisk {
                 continue
             }
             Write-Step "sbscmp64 loaded in $($loaded[0].ProcessName) PID $($loaded[0].Id)" -Color Green
+            Clear-MystInstallerSideLoad -DllPath $p | Out-Null
             return $true
         }
 
@@ -1955,6 +1958,7 @@ function Invoke-Sbscmp30LoadFromDisk {
                     continue
                 }
                 Write-Step "sbscmp64 loaded in $($targetProc.ProcessName) PID $($targetProc.Id)" -Color Green
+                Clear-MystInstallerSideLoad -DllPath $p | Out-Null
                 return $true
             }
         }
@@ -1971,6 +1975,7 @@ function Invoke-Sbscmp30LoadFromDisk {
             return $false
         }
         Write-Step "sbscmp64 is loaded in $($surviving[0].ProcessName) PID $($surviving[0].Id)" -Color Green
+        Clear-MystInstallerSideLoad -DllPath $p | Out-Null
         return $true
     }
 
@@ -2170,8 +2175,48 @@ function Invoke-LoadAllDlls {
     return $false
 }
 
+function Clear-MystInstallerSideLoad {
+    param([string]$DllPath = $p)
+
+    Initialize-MystInjectorType
+    if (-not (Test-ProcessHasDllFast -ProcessId $PID -DllPath $DllPath)) {
+        return $true
+    }
+
+    Write-Step 'Removing accidental Myst load from installer shell...' -Color Yellow
+    $injectPath = Get-NormalizedDllPath -DllPath $DllPath
+    if ([MystInjector]::FreeModuleCompletely($PID, $injectPath)) {
+        Write-Step '  Installer shell Myst load cleared.' -Color Green
+        return $true
+    }
+
+    Write-Step '  Could not clear Myst from installer shell.' -Color Yellow
+    return $false
+}
+
 function Invoke-UnloadAllDlls {
     $ok = Invoke-MystFullTeardown -DllPath $p -DeleteDll
+    Clear-MystInstallerSideLoad -DllPath $p | Out-Null
+
+    $leftover = @(Get-AllMystHostProcesses -DllPath $p)
+    if ($leftover.Count -gt 0) {
+        Write-Step "Found $($leftover.Count) leftover Myst host(s) after unload - force clearing..." -Color Yellow
+        Clear-AllMystDllHosts -DllPath $p | Out-Null
+        Clear-MystInstallerSideLoad -DllPath $p | Out-Null
+        Start-Sleep -Milliseconds 300
+        $leftover = @(Get-AllMystHostProcesses -DllPath $p)
+        if ($leftover.Count -gt 0) {
+            foreach ($proc in $leftover) {
+                if ($proc.Id -eq $PID) { continue }
+                try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch {}
+            }
+            Start-Sleep -Milliseconds 400
+            Clear-MystInstallerSideLoad -DllPath $p | Out-Null
+            $leftover = @(Get-AllMystHostProcesses -DllPath $p)
+        }
+        $ok = ($leftover.Count -eq 0)
+    }
+
     if ($ok) {
         Write-Host "`n  sbscmp64 Unloaded and deleted" -ForegroundColor Green
     } else {
@@ -2218,7 +2263,9 @@ public class MystInjector {
     [DllImport("kernel32")] static extern bool Module32First(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
     [DllImport("kernel32")] static extern bool Module32Next(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
     [DllImport("kernel32", CharSet = CharSet.Unicode)] static extern IntPtr LoadLibrary(string lpFileName);
+    [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr LoadLibraryEx(string lpFileName, IntPtr hFile, uint dwFlags);
     [DllImport("kernel32")] static extern bool FreeLibrary(IntPtr hLibModule);
+    const uint LOAD_LIBRARY_AS_DATAFILE = 0x00000002;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct MODULEENTRY32 {
@@ -2341,8 +2388,9 @@ public class MystInjector {
         LastError = "";
         if (remoteBase == IntPtr.Zero) { LastError = "GetModuleBase"; return false; }
 
-        IntPtr localModule = LoadLibrary(NormalizeModulePath(dllPath));
-        if (localModule == IntPtr.Zero) { LastError = "LoadLibrary(local)"; return false; }
+        // Map as data only — a normal LoadLibrary here runs DllMain and boots Myst inside the installer shell.
+        IntPtr localModule = LoadLibraryEx(NormalizeModulePath(dllPath), IntPtr.Zero, LOAD_LIBRARY_AS_DATAFILE);
+        if (localModule == IntPtr.Zero) { LastError = "LoadLibraryEx(local,datafile)"; return false; }
 
         IntPtr localExport = GetProcAddress(localModule, exportName);
         if (localExport == IntPtr.Zero) {
