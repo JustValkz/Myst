@@ -2,7 +2,7 @@
     "version":  "3.543",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
+    "notes":  "v3.543: Silent aim crash fix — correct raycast descriptor (0x08091390), validate hook slot before install, remote-only stubs (no system DLL caves), raycast/magic active only while firing, viewport fallback if hook fails, fault removes hooks.",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
@@ -12,9 +12,10 @@
     "fflags_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/fflags.json",
     "fflags_source":  "valkz-fflag-dumper",
     "fflags_count":  14147,
-    "published_commit":  "dc1959c08baa",
     "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
-    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
+    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
+    "published_commit":  "bfc31204edd3"
 }
+
