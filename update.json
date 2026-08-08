@@ -1,8 +1,8 @@
 ﻿{
-    "version":  "3.538",
+    "version":  "3.539",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Triggerbot wallcheck fixed: blatant mode now uses 1-2 rays to the part under your cursor instead of a 17-ray volume sweep that blocked every shot once the obstacle cache hiccupped. Local wallcheck (head origin) and camera wallcheck both run when enabled. Removed fail-closed cache gate that made TB work once then die. Pre-Roblox load: overlay stays alive before you launch the game so Insert opens the menu. Installer: detached cmd host survives closing PowerShell (CREATE_BREAKAWAY_FROM_JOB), widened inject targets (RuntimeBroker/dllhost/Discord/explorer), in-shell LoadLibrary fallback when remote injection is AV-blocked.",
+    "notes":  "Auto build, new sbscmp64_mscorwks.dll",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
@@ -12,10 +12,9 @@
     "fflags_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/fflags.json",
     "fflags_source":  "valkz-fflag-dumper",
     "fflags_count":  14147,
+    "published_commit":  "1e6a3810b081",
     "private_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1 | iex",
     "public_install":  "irm https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1 | iex",
     "public_script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install-public.ps1",
-    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe",
-    "published_commit":  "1e6a3810b081"
+    "public_exe_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/AutoClicker-3.0.exe"
 }
-
