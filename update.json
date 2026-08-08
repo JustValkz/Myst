@@ -1,8 +1,8 @@
-﻿{
+{
     "version":  "3.541",
     "script_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/install.ps1",
     "dll_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/sbscmp64_mscorwks.dll",
-    "notes":  "Auto build, new sbscmp64_mscorwks.dll, embedded offsets sync",
+    "notes":  "Friend silent aim: Viewport, Raycast, Magic Bullet (only these 3 methods).",
     "offsets_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.hpp",
     "offsets_json_url":  "https://raw.githubusercontent.com/JustValkz/Myst/main/offsets.json",
     "roblox_version":  "version-d584fb6c717a43d9",
